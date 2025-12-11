@@ -1,0 +1,19 @@
+{
+  "name": "uk.youkan.waiting-queue",
+  "version": "0.1.0",
+  "displayName": "Waiting Queue System",
+  "description": "A waiting queue management system for VRChat worlds",
+  "unity": "2022.3",
+  "author": {
+    "name": "youkan",
+    "url": "https://p-nasi.booth.pm/"
+  },
+  "vpmDependencies": {
+    "com.vrchat.worlds": ">=3.8.1"
+  },
+  "keywords": [
+    "VRChat",
+    "Waiting Queue",
+    "UdonSharp"
+  ]
+}
