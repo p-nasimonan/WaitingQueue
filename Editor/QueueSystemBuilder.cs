@@ -76,7 +76,7 @@ namespace Youkan.WaitingQueue.Editor
         {
             GameObject canvasObject = new GameObject("WorldFixedPanel");
             canvasObject.transform.SetParent(parent);
-            canvasObject.transform.localPosition = new Vector3(0, 2, 3);
+            canvasObject.transform.localPosition = new Vector3(0f, 0.5f, 0f);
             canvasObject.transform.localRotation = Quaternion.identity;
             
             // Canvas設定
