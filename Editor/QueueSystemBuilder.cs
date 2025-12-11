@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using VRC.Udon;
+using VRC.Core;
 using System.Linq;
 
 namespace Youkan.WaitingQueue.Editor
@@ -383,9 +384,92 @@ namespace Youkan.WaitingQueue.Editor
         }
 
         /// <summary>
-        /// 外部から呼び出すための静的メソッド（QueueSystemSetupから使用）
+        /// UdonSharpスクリプトを自動的にアタッチします。
         /// </summary>
-        public static void CreateQueueSystemUIStatic(bool useJapanese, TMP_FontAsset fontAsset)
+        private static void AttachUdonScripts(GameObject rootObject)
+        {
+            // マネージャーオブジェクトを取得
+            Transform queueManagerTransform = rootObject.transform.Find("QueueManager");
+            Transform queueUIManagerTransform = rootObject.transform.Find("QueueUIManager");
+            Transform queueNotificationManagerTransform = rootObject.transform.Find("QueueNotificationManager");
+            Transform queueButtonHandlerTransform = rootObject.transform.Find("QueueButtonHandler");
+
+            if (queueManagerTransform == null || queueUIManagerTransform == null || 
+                queueNotificationManagerTransform == null || queueButtonHandlerTransform == null)
+            {
+                Debug.LogWarning("[QueueSystemBuilder] Could not find all manager objects. Skipping script attachment.");
+                return;
+            }
+
+            // UdonBehaviourコンポーネントを追加
+            GameObject queueManagerObject = queueManagerTransform.gameObject;
+            GameObject queueUIManagerObject = queueUIManagerTransform.gameObject;
+            GameObject queueNotificationManagerObject = queueNotificationManagerTransform.gameObject;
+            GameObject queueButtonHandlerObject = queueButtonHandlerTransform.gameObject;
+
+            // UdonBehaviourを追加（VRC SDKに依存）
+            UdonBehaviour queueManagerUdon = queueManagerObject.AddComponent<UdonBehaviour>();
+            UdonBehaviour queueUIManagerUdon = queueUIManagerObject.AddComponent<UdonBehaviour>();
+            UdonBehaviour queueNotificationManagerUdon = queueNotificationManagerObject.AddComponent<UdonBehaviour>();
+            UdonBehaviour queueButtonHandlerUdon = queueButtonHandlerObject.AddComponent<UdonBehaviour>();
+
+            // UdonSharpスクリプトアセット（.asset）をロード
+            string basePath = "Packages/uk.youkan.waiting-queue/Runtime/";
+            
+            var queueManagerAsset = AssetDatabase.LoadAssetAtPath(basePath + "QueueManager.asset", typeof(ScriptableObject)) as ScriptableObject;
+            var queueUIManagerAsset = AssetDatabase.LoadAssetAtPath(basePath + "QueueUIManager.asset", typeof(ScriptableObject)) as ScriptableObject;
+            var queueNotificationManagerAsset = AssetDatabase.LoadAssetAtPath(basePath + "QueueNotificationManager.asset", typeof(ScriptableObject)) as ScriptableObject;
+            var queueButtonHandlerAsset = AssetDatabase.LoadAssetAtPath(basePath + "QueueButtonHandler.asset", typeof(ScriptableObject)) as ScriptableObject;
+
+            // Udonプログラムをアタッチ
+            if (queueManagerAsset != null && queueManagerAsset is AbstractUdonProgramSource)
+            {
+                queueManagerUdon.programSource = (AbstractUdonProgramSource)queueManagerAsset;
+                Debug.Log("[QueueSystemBuilder] QueueManager script attached.");
+            }
+            else
+            {
+                Debug.LogWarning("[QueueSystemBuilder] QueueManager.asset not found or invalid at " + basePath);
+            }
+
+            if (queueUIManagerAsset != null && queueUIManagerAsset is AbstractUdonProgramSource)
+            {
+                queueUIManagerUdon.programSource = (AbstractUdonProgramSource)queueUIManagerAsset;
+                Debug.Log("[QueueSystemBuilder] QueueUIManager script attached.");
+            }
+            else
+            {
+                Debug.LogWarning("[QueueSystemBuilder] QueueUIManager.asset not found or invalid at " + basePath);
+            }
+
+            if (queueNotificationManagerAsset != null && queueNotificationManagerAsset is AbstractUdonProgramSource)
+            {
+                queueNotificationManagerUdon.programSource = (AbstractUdonProgramSource)queueNotificationManagerAsset;
+                Debug.Log("[QueueSystemBuilder] QueueNotificationManager script attached.");
+            }
+            else
+            {
+                Debug.LogWarning("[QueueSystemBuilder] QueueNotificationManager.asset not found or invalid at " + basePath);
+            }
+
+            if (queueButtonHandlerAsset != null && queueButtonHandlerAsset is AbstractUdonProgramSource)
+            {
+                queueButtonHandlerUdon.programSource = (AbstractUdonProgramSource)queueButtonHandlerAsset;
+                Debug.Log("[QueueSystemBuilder] QueueButtonHandler script attached.");
+            }
+            else
+            {
+                Debug.LogWarning("[QueueSystemBuilder] QueueButtonHandler.asset not found or invalid at " + basePath);
+            }
+
+            Debug.Log("[QueueSystemBuilder] UdonSharp scripts loaded and attached.");
+        }
+
+        /// <summary>
+        /// 外部から呼び出すための静的メソッド（QueueSystemSetupから使用）
+        /// UIをプレハブ化してシーンに配置する
+        /// </summary>
+        public static string CreateQueueSystemUIStatic(bool useJapanese, TMP_FontAsset fontAsset)
         {
             _useJapanese = useJapanese;
             _japaneseFontAsset = fontAsset;
@@ -395,7 +479,7 @@ namespace Youkan.WaitingQueue.Editor
             {
                 Debug.LogError("[QueueSystemBuilder] Japanese font asset is required but not provided");
                 EditorUtility.DisplayDialog("エラー", "日本語フォントアセットが見つかりません。先にフォントを作成してください。", "OK");
-                return;
+                return null;
             }
 
             GameObject rootObject = new GameObject("QueueSystem");
@@ -413,9 +497,43 @@ namespace Youkan.WaitingQueue.Editor
             builder.CreatePlayerFollowNotificationPanel(rootObject.transform);
             builder.CreateAudioSource(rootObject.transform);
 
-            Selection.activeGameObject = rootObject;
+            // プレハブとして保存
+            string prefabPath = "Packages/uk.youkan.waiting-queue/Prefabs/QueueSystem.prefab";
+            string prefabDir = System.IO.Path.GetDirectoryName(prefabPath);
+            if (!System.IO.Directory.Exists(prefabDir))
+            {
+                System.IO.Directory.CreateDirectory(prefabDir);
+            }
 
-            Debug.Log("[QueueSystemBuilder] UI structure created successfully.");
+            // UdonSharpスクリプトをアタッチ
+            AttachUdonScripts(rootObject);
+
+            // プレハブ化
+            PrefabUtility.SaveAsPrefabAsset(rootObject, prefabPath);
+            
+            // シーンにプレハブを配置
+            GameObject sceneInstance = PrefabUtility.InstantiatePrefab(
+                AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath)
+            ) as GameObject;
+            
+            if (sceneInstance != null)
+            {
+                sceneInstance.name = "QueueSystem";
+                Selection.activeGameObject = sceneInstance;
+                Debug.Log("[QueueSystemBuilder] UI prefab created and placed in scene at: " + prefabPath);
+            }
+            else
+            {
+                // プレハブの配置に失敗した場合は、作成したオブジェクトを選択
+                Selection.activeGameObject = rootObject;
+                Debug.LogWarning("[QueueSystemBuilder] Could not instantiate prefab in scene, showing created object instead.");
+            }
+
+            // 元のオブジェクトを削除
+            Object.DestroyImmediate(rootObject);
+            Debug.Log("[QueueSystemBuilder] Temporary object removed.");
+
+            return prefabPath;
         }
     }
 }

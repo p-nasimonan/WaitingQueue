@@ -113,19 +113,19 @@ namespace Youkan.WaitingQueue.Editor
         private void CreateQueueSystemUI()
         {
             // QueueSystemBuilderを参照して実行
-            string presetPath = QueueSystemBuilder.CreateQueueSystemUIStatic(_useJapanese, _japaneseFontAsset);
+            string prefabPath = QueueSystemBuilder.CreateQueueSystemUIStatic(_useJapanese, _japaneseFontAsset);
 
-            if (!string.IsNullOrEmpty(presetPath))
+            if (!string.IsNullOrEmpty(prefabPath))
             {
                 EditorUtility.DisplayDialog(
                     "完了",
-                    $"UIプリセットを作成しました。\n\nパス: {presetPath}\n\n次にUdonBehaviourコンポーネントを追加してください。",
+                    $"UIプレハブを作成し、シーンに配置しました。\n\nプレハブパス: {prefabPath}\n\n次にUdonBehaviourコンポーネントを追加してください。",
                     "OK"
                 );
             }
             else
             {
-                EditorUtility.DisplayDialog("エラー", "UIプリセットの作成に失敗しました。", "OK");
+                EditorUtility.DisplayDialog("エラー", "UIプレハブの作成に失敗しました。", "OK");
             }
         }
 
