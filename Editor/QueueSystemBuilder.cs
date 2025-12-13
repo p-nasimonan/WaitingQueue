@@ -25,7 +25,7 @@ namespace Youkan.WaitingQueue.Editor
             if (_japaneseFontAsset != null) return _japaneseFontAsset;
             
             // まず、パッケージ内のフォントを検索
-            string packageFontPath = "Packages/uk.youkan.waiting-queue/Assets/font/JK-Maru-Gothic-M SDF.asset";
+            string packageFontPath = "Packages/uk.youkan.waiting-queue/Runtime/font/JK-Maru-Gothic-M SDF.asset";
             _japaneseFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(packageFontPath);
             
             if (_japaneseFontAsset != null)
@@ -384,85 +384,12 @@ namespace Youkan.WaitingQueue.Editor
         }
 
         /// <summary>
-        /// UdonSharpスクリプトを自動的にアタッチします。
+        /// UdonBehaviourは手動で追加してください。
         /// </summary>
         private static void AttachUdonScripts(GameObject rootObject)
         {
-            // マネージャーオブジェクトを取得
-            Transform queueManagerTransform = rootObject.transform.Find("QueueManager");
-            Transform queueUIManagerTransform = rootObject.transform.Find("QueueUIManager");
-            Transform queueNotificationManagerTransform = rootObject.transform.Find("QueueNotificationManager");
-            Transform queueButtonHandlerTransform = rootObject.transform.Find("QueueButtonHandler");
-
-            if (queueManagerTransform == null || queueUIManagerTransform == null || 
-                queueNotificationManagerTransform == null || queueButtonHandlerTransform == null)
-            {
-                Debug.LogWarning("[QueueSystemBuilder] Could not find all manager objects. Skipping script attachment.");
-                return;
-            }
-
-            // UdonBehaviourコンポーネントを追加
-            GameObject queueManagerObject = queueManagerTransform.gameObject;
-            GameObject queueUIManagerObject = queueUIManagerTransform.gameObject;
-            GameObject queueNotificationManagerObject = queueNotificationManagerTransform.gameObject;
-            GameObject queueButtonHandlerObject = queueButtonHandlerTransform.gameObject;
-
-            // UdonBehaviourを追加（VRC SDKに依存）
-            UdonBehaviour queueManagerUdon = queueManagerObject.AddComponent<UdonBehaviour>();
-            UdonBehaviour queueUIManagerUdon = queueUIManagerObject.AddComponent<UdonBehaviour>();
-            UdonBehaviour queueNotificationManagerUdon = queueNotificationManagerObject.AddComponent<UdonBehaviour>();
-            UdonBehaviour queueButtonHandlerUdon = queueButtonHandlerObject.AddComponent<UdonBehaviour>();
-
-            // UdonSharpスクリプトアセット（.asset）をロード
-            string basePath = "Packages/uk.youkan.waiting-queue/Runtime/";
-            
-            var queueManagerAsset = AssetDatabase.LoadAssetAtPath(basePath + "QueueManager.asset", typeof(ScriptableObject)) as ScriptableObject;
-            var queueUIManagerAsset = AssetDatabase.LoadAssetAtPath(basePath + "QueueUIManager.asset", typeof(ScriptableObject)) as ScriptableObject;
-            var queueNotificationManagerAsset = AssetDatabase.LoadAssetAtPath(basePath + "QueueNotificationManager.asset", typeof(ScriptableObject)) as ScriptableObject;
-            var queueButtonHandlerAsset = AssetDatabase.LoadAssetAtPath(basePath + "QueueButtonHandler.asset", typeof(ScriptableObject)) as ScriptableObject;
-
-            // Udonプログラムをアタッチ
-            if (queueManagerAsset != null && queueManagerAsset is AbstractUdonProgramSource)
-            {
-                queueManagerUdon.programSource = (AbstractUdonProgramSource)queueManagerAsset;
-                Debug.Log("[QueueSystemBuilder] QueueManager script attached.");
-            }
-            else
-            {
-                Debug.LogWarning("[QueueSystemBuilder] QueueManager.asset not found or invalid at " + basePath);
-            }
-
-            if (queueUIManagerAsset != null && queueUIManagerAsset is AbstractUdonProgramSource)
-            {
-                queueUIManagerUdon.programSource = (AbstractUdonProgramSource)queueUIManagerAsset;
-                Debug.Log("[QueueSystemBuilder] QueueUIManager script attached.");
-            }
-            else
-            {
-                Debug.LogWarning("[QueueSystemBuilder] QueueUIManager.asset not found or invalid at " + basePath);
-            }
-
-            if (queueNotificationManagerAsset != null && queueNotificationManagerAsset is AbstractUdonProgramSource)
-            {
-                queueNotificationManagerUdon.programSource = (AbstractUdonProgramSource)queueNotificationManagerAsset;
-                Debug.Log("[QueueSystemBuilder] QueueNotificationManager script attached.");
-            }
-            else
-            {
-                Debug.LogWarning("[QueueSystemBuilder] QueueNotificationManager.asset not found or invalid at " + basePath);
-            }
-
-            if (queueButtonHandlerAsset != null && queueButtonHandlerAsset is AbstractUdonProgramSource)
-            {
-                queueButtonHandlerUdon.programSource = (AbstractUdonProgramSource)queueButtonHandlerAsset;
-                Debug.Log("[QueueSystemBuilder] QueueButtonHandler script attached.");
-            }
-            else
-            {
-                Debug.LogWarning("[QueueSystemBuilder] QueueButtonHandler.asset not found or invalid at " + basePath);
-            }
-
-            Debug.Log("[QueueSystemBuilder] UdonSharp scripts loaded and attached.");
+            Debug.Log("[QueueSystemBuilder] Please manually add UdonBehaviour components to each manager object.");
+            Debug.Log("[QueueSystemBuilder] Managers: QueueManager, QueueUIManager, QueueNotificationManager, QueueButtonHandler");
         }
 
         /// <summary>
