@@ -1,4 +1,4 @@
-・ｿusing UdonSharp;
+using UdonSharp;
 using VRC.SDKBase;
 using VRC.Udon;
 using VRC.Udon.Common.Interfaces;
@@ -8,7 +8,9 @@ using UnityEngine.UI;
 namespace Youkan.WaitingQueue
 {
     /// <summary>
-    /// 蠕・ｩ溷・邂｡逅・す繧ｹ繝・Β縺ｮ繧ｳ繧｢繝ｭ繧ｸ繝・け繧呈球蠖薙＠縺ｾ縺吶・    /// 繝励Ξ繧､繝､繝ｼ縺ｮ繧ｨ繝ｳ繝医Μ繝ｼ縲√Μ繧ｹ繝亥酔譛溘・夂衍繧､繝吶Φ繝育ｮ｡逅・ｒ陦後＞縺ｾ縺吶・    /// </summary>
+    /// キュー管理システムのコアロジックを担当します。
+    /// プレイヤーのエントリー、リスト同期、通知イベント管理を行います。
+    /// </summary>
     [UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
     public class QueueManager : UdonSharpBehaviour
     {
@@ -40,7 +42,8 @@ namespace Youkan.WaitingQueue
                 return;
             }
 
-            // 繧ｪ繝ｼ繝翫・縺ｮ蝣ｴ蜷医・縺ｿ蛻晄悄蛹・            if (Networking.IsOwner(gameObject))
+            // オーナーの場合のみ初期化
+            if (Networking.IsOwner(gameObject))
             {
                 queuedPlayerIds = new string[0];
                 queuedPlayerNames = new string[0];
@@ -52,7 +55,8 @@ namespace Youkan.WaitingQueue
         }
 
         /// <summary>
-        /// 繝励Ξ繧､繝､繝ｼ縺悟ｾ・ｩ溷・縺ｫ蜈･繧・謚懊￠繧九ｒ繝医げ繝ｫ縺励∪縺吶・        /// </summary>
+        /// プレイヤーがキューに入れ抜けるをトグルします。
+        /// </summary>
         public void ToggleQueue()
         {
             if (localPlayer == null) return;
@@ -61,16 +65,19 @@ namespace Youkan.WaitingQueue
             
             if (existingIndex >= 0)
             {
-                // 譌｢縺ｫ蛻励↓縺・ｋ蝣ｴ蜷医・謚懊￠繧・                LeaveQueue();
+                // 既に列にある場合は抜ける
+                LeaveQueue();
             }
             else
             {
-                // 蛻励↓縺・↑縺・ｴ蜷医・蜈･繧・                EnqueuePlayer();
+                // 列にない場合は入る
+                EnqueuePlayer();
             }
         }
 
         /// <summary>
-        /// 繧ｲ繧ｹ繝医′縺薙・繝｡繧ｽ繝・ラ繧貞他縺ｳ蜃ｺ縺吶％縺ｨ縺ｧ蠕・ｩ溷・縺ｫ逋ｻ骭ｲ縺励∪縺吶・        /// </summary>
+        /// ゲストがこのメソッドを呼び出すことでキューに登録します。
+        /// </summary>
         public void EnqueuePlayer()
         {
             if (localPlayer == null)
@@ -79,7 +86,7 @@ namespace Youkan.WaitingQueue
                 return;
             }
 
-            // 譌｢縺ｫ逋ｻ骭ｲ貂医∩縺九メ繧ｧ繝・け
+            // 既に登録済みかチェック
             int existingIndex = GetPlayerQueueIndex(localPlayer.playerId);
             if (existingIndex >= 0)
             {
@@ -87,45 +94,46 @@ namespace Youkan.WaitingQueue
                 return;
             }
 
-            // 繧ｭ繝･繝ｼ繧ｵ繧､繧ｺ繝√ぉ繝・け
+            // キューサイズチェック
             if (queuedPlayerIds.Length >= maxQueueSize)
             {
                 Debug.LogWarning("[QueueManager] Queue is full.");
                 return;
             }
 
-            // 繝励Ξ繧､繝､繝ｼID縺ｨ蜷榊燕繧偵Μ繧ｹ繝医↓霑ｽ蜉
+            // プレイヤーIDと名前をリストに追加
             AddToQueue(localPlayer.playerId, localPlayer.displayName);
 
-            // 蜈ｨ繧ｯ繝ｩ繧､繧｢繝ｳ繝医↓蜷梧悄
+            // 全クライアントに同期
             RequestSerialization();
             
-            // UI譖ｴ譁ｰ
+            // UI更新
             UpdateUI();
         }
 
         /// <summary>
-        /// 蠕・ｩ溷・縺ｫ繝励Ξ繧､繝､繝ｼ繧定ｿｽ蜉縺励∪縺呻ｼ亥・驛ｨ繝｡繧ｽ繝・ラ・峨・        /// </summary>
+        /// キューにプレイヤーを追加します（内部メソッド）。
+        /// </summary>
         private void AddToQueue(int playerId, string playerName)
         {
             int newLength = queuedPlayerIds.Length + 1;
             
-            // 驟榊・繧呈僑蠑ｵ
+            // 配列を拡張
             string[] newIds = new string[newLength];
             string[] newNames = new string[newLength];
 
-            // 譌｢蟄倥・繝・・繧ｿ繧偵さ繝斐・
+            // 既存データをコピー
             for (int i = 0; i < queuedPlayerIds.Length; i++)
             {
                 newIds[i] = queuedPlayerIds[i];
                 newNames[i] = queuedPlayerNames[i];
             }
 
-            // 譁ｰ縺励＞繝励Ξ繧､繝､繝ｼ繧定ｿｽ蜉
+            // 新しいプレイヤーを追加
             newIds[newLength - 1] = playerId.ToString();
             newNames[newLength - 1] = playerName;
 
-            // 驟榊・繧呈峩譁ｰ
+            // 配列を更新
             queuedPlayerIds = newIds;
             queuedPlayerNames = newNames;
 
@@ -133,7 +141,9 @@ namespace Youkan.WaitingQueue
         }
 
         /// <summary>
-        /// 繝励Ξ繧､繝､繝ｼ縺悟ｾ・ｩ溷・蜀・・縺ｩ縺ｮ菴咲ｽｮ縺ｫ縺・ｋ縺九ｒ蜿門ｾ励＠縺ｾ縺吶・        /// 隕九▽縺九ｉ縺ｪ縺・ｴ蜷医・ -1 繧定ｿ斐＠縺ｾ縺吶・        /// </summary>
+        /// プレイヤーがキュー内のどの位置にあるかを取得します。
+        /// 見つからない場合は -1 を返します。
+        /// </summary>
         public int GetPlayerQueueIndex(int playerId)
         {
             string playerIdStr = playerId.ToString();
@@ -150,7 +160,9 @@ namespace Youkan.WaitingQueue
         }
 
         /// <summary>
-        /// 繝励Ξ繧､繝､繝ｼ縺檎樟蝨ｨ菴慕分逶ｮ蠕・■縺九ｒ遒ｺ隱阪＠縺ｾ縺呻ｼ・繝吶・繧ｹ・峨・        /// 0 繧定ｿ斐＠縺溷ｴ蜷医・繝励Ξ繧､繝､繝ｼ縺後く繝･繝ｼ縺ｫ逋ｻ骭ｲ縺輔ｌ縺ｦ縺・∪縺帙ｓ縲・        /// </summary>
+        /// プレイヤーが現在何番目かを確認します。ベース1です。
+        /// 0 を返した場合はプレイヤーがキューに登録されていません。
+        /// </summary>
         public int GetPlayerQueuePosition()
         {
             int index = GetPlayerQueueIndex(localPlayer.playerId);
@@ -158,14 +170,17 @@ namespace Youkan.WaitingQueue
         }
 
         /// <summary>
-        /// 迴ｾ蝨ｨ縺ｮ蠕・ｩ溷・縺ｫ逋ｻ骭ｲ縺輔ｌ縺ｦ縺・ｋ繝励Ξ繧､繝､繝ｼ謨ｰ繧貞叙蠕励＠縺ｾ縺吶・        /// </summary>
+        /// 現在のキューに登録されているプレイヤー数を取得します。
+        /// </summary>
         public int GetQueueLength()
         {
             return queuedPlayerIds.Length;
         }
 
         /// <summary>
-        /// 繧ｪ繝ｼ繝翫・縺梧ｬ｡縺ｮ繝励Ξ繧､繝､繝ｼ縺ｫ騾ｲ繧√ｋ蜃ｦ逅・ｒ螳溯｡後＠縺ｾ縺吶・        /// 蠕・ｩ溷・縺ｮ蜈磯ｭ繧貞炎髯､縺励∵ｬ｡縺ｮ繝励Ξ繧､繝､繝ｼ縺ｫ騾夂衍繧帝√ｊ縺ｾ縺吶・        /// </summary>
+        /// オーナーが次のプレイヤーに進める処理を実行します。
+        /// キューの先頭を削除し、次のプレイヤーに通知を送ります。
+        /// </summary>
         public void AdvanceQueue()
         {
             if (!Networking.IsOwner(gameObject))
@@ -180,24 +195,25 @@ namespace Youkan.WaitingQueue
                 return;
             }
 
-            // 蜻ｼ縺ｳ蜃ｺ縺輔ｌ縺溘・繝ｬ繧､繝､繝ｼ縺ｮID繧定ｨ倬鹸
+            // 呼び出されたプレイヤーのIDを記録
             lastCalledPlayerId = queuedPlayerIds[0];
             
-            // 蜷梧悄繧ｫ繧ｦ繝ｳ繧ｿ繝ｼ繧貞｢励ｄ縺励※騾夂衍繧偵ヨ繝ｪ繧ｬ繝ｼ
+            // 同期カウンターを増やして通知をトリガー
             syncCounter++;
 
-            // 蜈磯ｭ繧貞炎髯､
+            // 先頭を削除
             RemoveFromQueueAt(0);
 
-            // 蜈ｨ繧ｯ繝ｩ繧､繧｢繝ｳ繝医↓蜷梧悄
+            // 全クライアントに同期
             RequestSerialization();
             
-            // UI譖ｴ譁ｰ
+            // UI更新
             UpdateUI();
         }
 
         /// <summary>
-        /// 謖・ｮ壹＆繧後◆繧､繝ｳ繝・ャ繧ｯ繧ｹ縺ｮ繝励Ξ繧､繝､繝ｼ繧貞ｾ・ｩ溷・縺九ｉ蜑企勁縺励∪縺呻ｼ亥・驛ｨ繝｡繧ｽ繝・ラ・峨・        /// </summary>
+        /// 指定されたインデックスのプレイヤーをキューから削除します（内部メソッド）。
+        /// </summary>
         private void RemoveFromQueueAt(int index)
         {
             if (index < 0 || index >= queuedPlayerIds.Length)
@@ -221,14 +237,14 @@ namespace Youkan.WaitingQueue
                 string[] newIds = new string[newLength];
                 string[] newNames = new string[newLength];
 
-                // 蜑企勁縺輔ｌ繧九う繝ｳ繝・ャ繧ｯ繧ｹ繧医ｊ蜑阪・繝・・繧ｿ繧偵さ繝斐・
+                // 削除されるインデックスより前のデータをコピー
                 for (int i = 0; i < index; i++)
                 {
                     newIds[i] = queuedPlayerIds[i];
                     newNames[i] = queuedPlayerNames[i];
                 }
 
-                // 蜑企勁縺輔ｌ繧九う繝ｳ繝・ャ繧ｯ繧ｹ繧医ｊ蠕後ｍ縺ｮ繝・・繧ｿ繧偵さ繝斐・
+                // 削除されるインデックスより後ろのデータをコピー
                 for (int i = index + 1; i < queuedPlayerIds.Length; i++)
                 {
                     newIds[i - 1] = queuedPlayerIds[i];
@@ -243,7 +259,8 @@ namespace Youkan.WaitingQueue
         }
 
         /// <summary>
-        /// 繝励Ξ繧､繝､繝ｼ縺悟ｾ・ｩ溷・縺九ｉ謇句虚縺ｧ閼ｱ蜃ｺ縺励∪縺吶・        /// </summary>
+        /// プレイヤーがキューから手動で脱出します。
+        /// </summary>
         public void LeaveQueue()
         {
             if (localPlayer == null) return;
@@ -263,7 +280,8 @@ namespace Youkan.WaitingQueue
         }
 
         /// <summary>
-        /// 迴ｾ蝨ｨ縺ｮ蠕・ｩ溷・縺ｮ諠・ｱ繧偵ョ繝舌ャ繧ｰ繝ｭ繧ｰ縺ｫ蜃ｺ蜉帙＠縺ｾ縺吶・        /// </summary>
+        /// 現在のキューの状態をデバッグログに出力します。
+        /// </summary>
         public void PrintQueueInfo()
         {
             if (queuedPlayerIds.Length == 0)
@@ -281,29 +299,31 @@ namespace Youkan.WaitingQueue
         }
 
         /// <summary>
-        /// UdonEvent繧帝壹§縺ｦ繝・・繧ｿ蜿嶺ｿ｡譎ゅ・蜃ｦ逅・        /// </summary>
+        /// UdonEventを通じてデータ受信時の処理。
+        /// </summary>
         public override void OnDeserialization()
         {
             Debug.Log("[QueueManager] Queue data has been synchronized.");
             
-            // 蜷梧悄繧ｫ繧ｦ繝ｳ繧ｿ繝ｼ縺悟､画峩縺輔ｌ縺溷ｴ蜷医・夂衍繧､繝吶Φ繝医ｒ繝√ぉ繝・け
+            // 同期カウンターが変更された場合、通知イベントをチェック
             if (syncCounter != lastKnownSyncCounter && lastCalledPlayerId != "")
             {
                 lastKnownSyncCounter = syncCounter;
                 
-                // 騾夂衍繝槭ロ繝ｼ繧ｸ繝｣繝ｼ縺ｫ騾夂衍繧帝∽ｿ｡
+                // 通知マネージャーに通知を送信
                 if (notificationManager != null)
                 {
                     notificationManager.TriggerNotification(lastCalledPlayerId);
                 }
             }
             
-            // UI譖ｴ譁ｰ
+            // UI更新
             UpdateUI();
         }
 
         /// <summary>
-        /// UI繝槭ロ繝ｼ繧ｸ繝｣繝ｼ縺ｫ繝・・繧ｿ繧帝∽ｿ｡縺励※譖ｴ譁ｰ縺励∪縺吶・        /// </summary>
+        /// UIマネージャーにデータを送信して更新します。
+        /// </summary>
         private void UpdateUI()
         {
             if (localPlayer == null)
@@ -320,7 +340,8 @@ namespace Youkan.WaitingQueue
         }
 
         /// <summary>
-        /// 繝ｭ繝ｼ繧ｫ繝ｫ繝励Ξ繧､繝､繝ｼ縺悟ｾ・ｩ溷・縺ｫ蜈･縺｣縺ｦ縺・ｋ縺九ｒ遒ｺ隱阪＠縺ｾ縺吶・        /// </summary>
+        /// ローカルプレイヤーがキューに入っているかを確認します。
+        /// </summary>
         public bool IsPlayerInQueue()
         {
             if (localPlayer == null) return false;
@@ -328,7 +349,8 @@ namespace Youkan.WaitingQueue
         }
 
         /// <summary>
-        /// 蠕・ｩ溷・繝・・繧ｿ繧貞叙蠕励＠縺ｾ縺呻ｼ亥､夜Κ蜿ら・逕ｨ・峨・        /// </summary>
+        /// キューデータを取得します（外部参照用）。
+        /// </summary>
         public string[] GetQueuePlayerNames() => queuedPlayerNames;
         public string[] GetQueuePlayerIds() => queuedPlayerIds;
     }
