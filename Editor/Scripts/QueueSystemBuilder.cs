@@ -22,7 +22,10 @@ namespace Youkan.WaitingQueue.Editor
     /// 2. UIManager と NotificationManager が各パネルに自動アタッチ
     /// 3. すべてのUI参照が自動設定
     /// 4. UIボタンの OnClick() を手動設定:
-    ///    - WorldToggleButton → QueueSystem の QueueManager.OnToggleButtonClick()
+    ///    - WorldToggleButton のInspectorで Button > OnClick()
+    ///    - 「Runtime Only」に設定
+    ///    - QueueSystem を「Object」にドラッグ
+    ///    - ドロップダウンで「QueueManager」→「OnToggleButtonClickEvent()」を選択
     /// </summary>
     public class QueueSystemBuilder : EditorWindow
     {
@@ -420,17 +423,10 @@ namespace Youkan.WaitingQueue.Editor
                 uiManager.worldToggleButton = worldPanelObj.Find("WorldToggleButton")?.GetComponent<Button>();
                 uiManager.worldButtonText = worldPanelObj.Find("WorldToggleButton/ButtonText")?.GetComponent<TextMeshProUGUI>();
                 
-                // ボタンリスナーを設定（エディタ時のみ）
-                Button toggleButton = uiManager.worldToggleButton;
-                if (toggleButton != null && queueManager != null)
-                {
-                    UnityEditor.Events.UnityEventTools.AddPersistentListener(
-                        toggleButton.onClick,
-                        queueManager.OnToggleButtonClick
-                    );
-                    EditorUtility.SetDirty(toggleButton);
-                    Debug.Log("[QueueSystemBuilder] Button listener registered via UnityEventTools");
-                }
+                // 注: ボタンリスナーは手動で設定してください
+                // WorldToggleButton のInspectorで Button > OnClick() を開き
+                // 「Runtime Only」に設定した後、QueueSystem を Object にドラッグ
+                // ドロップダウンで QueueManager > OnToggleButtonClickEvent() を選択
                 
                 Debug.Log("[QueueSystemBuilder] QueueUIManager references set");
             }
