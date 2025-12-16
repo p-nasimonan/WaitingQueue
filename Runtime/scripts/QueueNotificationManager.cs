@@ -15,12 +15,12 @@ namespace Youkan.WaitingQueue
     public class QueueNotificationManager : UdonSharpBehaviour
     {
         [Header("Notification UI (Player Follow)")]
-        [SerializeField] private GameObject notificationPanel;
-        [SerializeField] private TextMeshProUGUI notificationText;
-        [SerializeField] private Image notificationBackground;
+        public GameObject notificationPanel;
+        public TextMeshProUGUI notificationText;
+        public Image notificationBackground;
 
         [Header("Audio")]
-        [SerializeField] private AudioSource notificationAudioSource;
+        public AudioSource notificationAudioSource;
         [SerializeField] private AudioClip notificationSound;
 
         [Header("Notification Settings")]

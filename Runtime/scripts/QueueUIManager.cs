@@ -15,10 +15,10 @@ namespace Youkan.WaitingQueue
     public class QueueUIManager : UdonSharpBehaviour
     {
         [Header("World Fixed UI References")]
-        [SerializeField] private TextMeshProUGUI worldQueueListText;
-        [SerializeField] private ScrollRect worldScrollRect;
-        [SerializeField] private Button worldToggleButton;
-        [SerializeField] private TextMeshProUGUI worldButtonText;
+        public TextMeshProUGUI worldQueueListText;
+        public ScrollRect worldScrollRect;
+        public Button worldToggleButton;
+        public TextMeshProUGUI worldButtonText;
 
         [Header("Player Notification Monitor UI")]
         [SerializeField] private Button playerToggleButton;
@@ -26,8 +26,8 @@ namespace Youkan.WaitingQueue
         [SerializeField] private TextMeshProUGUI playerStatusText;
 
         [Header("Button Text Configuration")]
-        [SerializeField] private string joinButtonText = "キューに入る";
-        [SerializeField] private string leaveButtonText = "キューから出る";
+        [SerializeField] private string joinButtonText = "待機列に入る";
+        [SerializeField] private string leaveButtonText = "待機列から出る";
 
         [Header("Display Settings")]
         [SerializeField] private int maxDisplayLines = 20;
@@ -66,15 +66,33 @@ namespace Youkan.WaitingQueue
         }
 
         /// <summary>
+        /// Colorを16進数HTML色文字列に変換します。
+        /// ColorUtility.ToHtmlStringRGB()がUdonに公開されていないため、カスタム実装です。
+        /// </summary>
+        private string ColorToHexString(Color color)
+        {
+            int r = Mathf.RoundToInt(color.r * 255f);
+            int g = Mathf.RoundToInt(color.g * 255f);
+            int b = Mathf.RoundToInt(color.b * 255f);
+            return r.ToString("X2") + g.ToString("X2") + b.ToString("X2");
+        }
+
+        /// <summary>
         /// ボタンのテキストと状態を更新します。
         /// </summary>
         private void UpdateButtonState(bool inQueue)
         {
             string buttonText = inQueue ? leaveButtonText : joinButtonText;
+            Debug.Log($"[QueueUIManager] UpdateButtonState: inQueue={inQueue}, buttonText={buttonText}");
             
             if (worldButtonText != null)
             {
                 worldButtonText.text = buttonText;
+                Debug.Log($"[QueueUIManager] Updated worldButtonText to: {buttonText}");
+            }
+            else
+            {
+                Debug.LogWarning("[QueueUIManager] worldButtonText is null!");
             }
             
             if (playerButtonText != null)
@@ -142,7 +160,7 @@ namespace Youkan.WaitingQueue
                 
                 if (highlightCurrentPlayer && i == localPlayerIndex)
                 {
-                    string hexColor = ColorUtility.ToHtmlStringRGB(highlightColor);
+                    string hexColor = ColorToHexString(highlightColor);
                     displayText += $"<color=#{hexColor}><b>→{prefix}{playerName} (あなた)</b></color>\n";
                 }
                 else

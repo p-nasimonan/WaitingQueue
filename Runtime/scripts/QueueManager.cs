@@ -1,4 +1,4 @@
-using UdonSharp;
+﻿using UdonSharp;
 using VRC.SDKBase;
 using VRC.Udon;
 using VRC.Udon.Common.Interfaces;
@@ -10,6 +10,7 @@ namespace Youkan.WaitingQueue
     /// <summary>
     /// キュー管理システムのコアロジックを担当します。
     /// プレイヤーのエントリー、リスト同期、通知イベント管理を行います。
+    /// UIボタンの処理も統合しています。
     /// </summary>
     [UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
     public class QueueManager : UdonSharpBehaviour
@@ -17,9 +18,9 @@ namespace Youkan.WaitingQueue
         [Header("Configuration")]
         [SerializeField] private int maxQueueSize = 50;
 
-        [Header("UI References")]
-        [SerializeField] private QueueUIManager uiManager;
-        [SerializeField] private QueueNotificationManager notificationManager;
+        [Header("Manager References")]
+        public QueueUIManager uiManager;
+        public QueueNotificationManager notificationManager;
 
         [Header("Synchronized Data")]
         [UdonSynced] private string[] queuedPlayerIds = new string[0];
@@ -42,6 +43,8 @@ namespace Youkan.WaitingQueue
                 return;
             }
 
+            // ボタンリスナーはエディタ時に設定されます
+
             // オーナーの場合のみ初期化
             if (Networking.IsOwner(gameObject))
             {
@@ -56,9 +59,28 @@ namespace Youkan.WaitingQueue
 
         /// <summary>
         /// プレイヤーがキューに入れ抜けるをトグルします。
+        /// Unity Button の OnClick() から呼び出されます。
+        /// </summary>
+        public void OnToggleButtonClick()
+        {
+            Debug.Log("[QueueManager] OnToggleButtonClick called");
+            ToggleQueue();
+        }
+
+        /// <summary>
+        /// オーナーが次のプレイヤーを呼び出します。
+        /// Unity Button の OnClick() から呼び出されます。
+        /// </summary>
+        public void OnAdvanceButtonClick()
+        {
+            AdvanceQueue();
+        }
+
+        /// <summary>
+        /// プレイヤーがキューに入れ抜けるをトグルします。
         /// </summary>
         public void ToggleQueue()
-        {
+        {Debug.Log("[QueueManager] ToggleQueue called");
             if (localPlayer == null) return;
 
             int existingIndex = GetPlayerQueueIndex(localPlayer.playerId);
@@ -66,10 +88,13 @@ namespace Youkan.WaitingQueue
             if (existingIndex >= 0)
             {
                 // 既に列にある場合は抜ける
+                Debug.Log("[QueueManager] Player is in queue, leaving");
                 LeaveQueue();
             }
             else
             {
+                // 列にない場合は入る
+                Debug.Log("[QueueManager] Player not in queue, enqueuing");
                 // 列にない場合は入る
                 EnqueuePlayer();
             }

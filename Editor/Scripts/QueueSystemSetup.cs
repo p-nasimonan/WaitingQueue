@@ -96,7 +96,7 @@ namespace Youkan.WaitingQueue.Editor
         {
             if (_japaneseFontAsset != null) return;
 
-            string packageFontPath = "Packages/uk.youkan.waiting-queue/Runtime/Resources/Fonts/JK-Maru-Gothic-M SDF.asset";
+            string packageFontPath = "Assets/WaitingQueue/Runtime/Resources/Fonts/JK-Maru-Gothic-M SDF.asset";
             _japaneseFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(packageFontPath);
 
             if (_japaneseFontAsset == null)

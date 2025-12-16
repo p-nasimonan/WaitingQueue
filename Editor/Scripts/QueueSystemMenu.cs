@@ -41,7 +41,7 @@ namespace Youkan.WaitingQueue.Editor
             }
             
             // Prefabの保存先
-            string prefabPath = "Packages/uk.youkan.waiting-queue/Prefabs/QueueSystem.prefab";
+            string prefabPath = "Assets/WaitingQueue/Prefabs/QueueSystem.prefab";
             
             // Prefabとして保存
             GameObject prefab = PrefabUtility.SaveAsPrefabAsset(selected, prefabPath);
