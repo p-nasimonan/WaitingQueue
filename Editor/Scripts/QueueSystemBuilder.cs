@@ -426,7 +426,7 @@ namespace Youkan.WaitingQueue.Editor
                 // 注: ボタンリスナーは手動で設定してください
                 // WorldToggleButton のInspectorで Button > OnClick() を開き
                 // 「Runtime Only」に設定した後、QueueSystem を Object にドラッグ
-                // ドロップダウンで QueueManager > OnToggleButtonClickEvent() を選択
+                // UdonBehaviour.SendCustomEvent (string)を選択し、OnToggleButtonClickEventと入力
                 
                 Debug.Log("[QueueSystemBuilder] QueueUIManager references set");
             }
