@@ -144,6 +144,13 @@ namespace Youkan.WaitingQueue
                 return;
             }
 
+            // ▼▼▼ 追加：書き込む前にオーナー権限を取得する！ ▼▼▼
+            if (!Networking.IsOwner(gameObject))
+            {
+                Networking.SetOwner(localPlayer, gameObject);
+            }
+            // ▲▲▲ 追加ここまで ▲▲▲
+
             // プレイヤーIDと名前をリストに追加
             AddToQueue(localPlayer.playerId, localPlayer.displayName);
 
@@ -226,11 +233,12 @@ namespace Youkan.WaitingQueue
         /// </summary>
         public void AdvanceQueue()
         {
+            // ▼▼▼ 修正：オーナーじゃなかったら、諦めるのではなく取り返す ▼▼▼
             if (!Networking.IsOwner(gameObject))
             {
-                Debug.LogWarning("[QueueManager] Only the owner can advance the queue.");
-                return;
+                Networking.SetOwner(localPlayer, gameObject);
             }
+            // ▲▲▲ 修正ここまで ▲▲▲
 
             if (queuedPlayerIds.Length == 0)
             {
@@ -311,6 +319,13 @@ namespace Youkan.WaitingQueue
             int index = GetPlayerQueueIndex(localPlayer.playerId);
             if (index >= 0)
             {
+                // ▼▼▼ 追加：書き込む前にオーナー権限を取得する！ ▼▼▼
+                if (!Networking.IsOwner(gameObject))
+                {
+                    Networking.SetOwner(localPlayer, gameObject);
+                }
+                // ▲▲▲ 追加ここまで ▲▲▲
+
                 RemoveFromQueueAt(index);
                 RequestSerialization();
                 UpdateUI();
