@@ -166,6 +166,12 @@ namespace Youkan.WaitingQueue
         /// </summary>
         private void AddToQueue(int playerId, string playerName)
         {
+            if (string.IsNullOrEmpty(playerName))
+            {
+                Debug.LogWarning("[QueueManager] Player name is null or empty.");
+                return;
+            }
+
             int newLength = queuedPlayerIds.Length + 1;
             
             // 配列を拡張
@@ -233,6 +239,8 @@ namespace Youkan.WaitingQueue
         /// </summary>
         public void AdvanceQueue()
         {
+            if (localPlayer == null) return;
+
             // ▼▼▼ 修正：オーナーじゃなかったら、諦めるのではなく取り返す ▼▼▼
             if (!Networking.IsOwner(gameObject))
             {
