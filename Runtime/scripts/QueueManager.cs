@@ -58,26 +58,8 @@ namespace Youkan.WaitingQueue
         }
 
         /// <summary>
-        /// ボタンクリック時に呼ばれるメソッド（UnityEventから呼び出し）
-        /// </summary>
-        public void OnToggleButtonClickEvent()
-        {
-            Debug.Log("[QueueManager] OnToggleButtonClickEvent called");
-            SendCustomEvent("_OnToggleButtonClick");
-        }
-
-        /// <summary>
         /// プレイヤーがキューに入れ抜けるをトグルします。
         /// Udon Custom Event から呼び出されます。
-        /// </summary>
-        public void _OnToggleButtonClick()
-        {
-            Debug.Log("[QueueManager] _OnToggleButtonClick called");
-            ToggleQueue();
-        }
-
-        /// <summary>
-        /// 旧互換性用メソッド
         /// </summary>
         public void OnToggleButtonClick()
         {

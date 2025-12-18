@@ -104,6 +104,12 @@ namespace Youkan.WaitingQueue.Editor
             
             canvasObject.AddComponent<GraphicRaycaster>();
             
+            // VRC UI Shape 設定（VRChat でのインタラクション有効化）
+            canvasObject.AddComponent<VRC.SDK3.Components.VRCUiShape>();
+            
+            // レイヤーを Default に設定（UI レイヤーでは VRChat 外のインタラクションが無効）
+            canvasObject.layer = LayerMask.NameToLayer("Default");
+            
             RectTransform canvasRect = canvasObject.GetComponent<RectTransform>();
             canvasRect.sizeDelta = new Vector2(600, 800);
             canvasRect.localScale = new Vector3(0.001f, 0.001f, 0.001f);
@@ -171,9 +177,11 @@ namespace Youkan.WaitingQueue.Editor
             ScrollRect scrollComponent = scrollViewObject.AddComponent<ScrollRect>();
             scrollComponent.horizontal = false;
             scrollComponent.vertical = true;
+            scrollComponent.scrollSensitivity = 0f; // VRChat での移動中の誤発動を防止
             
             Image scrollImage = scrollViewObject.AddComponent<Image>();
             scrollImage.color = new Color(0.05f, 0.05f, 0.05f, 0.8f);
+            scrollImage.raycastTarget = true;
             
             // Viewport
             GameObject viewportObject = new GameObject("Viewport");
@@ -239,11 +247,11 @@ namespace Youkan.WaitingQueue.Editor
             buttonRect.sizeDelta = new Vector2(300, 80);
             
             Button button = buttonObject.AddComponent<Button>();
+            button.navigation = new Navigation { mode = Navigation.Mode.None }; // ナビゲーションを無効化
+            
             Image buttonImage = buttonObject.AddComponent<Image>();
             buttonImage.color = new Color(0.2f, 0.6f, 1f, 1f);
-            
-            // VRC UI Shapeを追加（VRChatでのクリック判定に必須）
-            buttonObject.AddComponent<VRC.SDK3.Components.VRCUiShape>();
+            buttonImage.raycastTarget = true;
             
             GameObject buttonTextObject = new GameObject("ButtonText");
             buttonTextObject.transform.SetParent(buttonObject.transform, false);
@@ -286,6 +294,12 @@ namespace Youkan.WaitingQueue.Editor
             
             CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
             scaler.dynamicPixelsPerUnit = 10;
+            
+            // VRC UI Shape 設定
+            canvasObject.AddComponent<VRC.SDK3.Components.VRCUiShape>();
+            
+            // レイヤーを Default に設定
+            canvasObject.layer = LayerMask.NameToLayer("Default");
             
             RectTransform canvasRect = canvasObject.GetComponent<RectTransform>();
             canvasRect.sizeDelta = new Vector2(500, 200);
@@ -426,7 +440,7 @@ namespace Youkan.WaitingQueue.Editor
                 // 注: ボタンリスナーは手動で設定してください
                 // WorldToggleButton のInspectorで Button > OnClick() を開き
                 // 「Runtime Only」に設定した後、QueueSystem を Object にドラッグ
-                // UdonBehaviour.SendCustomEvent (string)を選択し、OnToggleButtonClickEventと入力
+                // UdonBehaviour.SendCustomEvent (string)を選択し、OnToggleButtonClickと入力
                 
                 Debug.Log("[QueueSystemBuilder] QueueUIManager references set");
             }
