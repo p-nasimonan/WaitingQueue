@@ -400,8 +400,8 @@ namespace Youkan.WaitingQueue.Editor
             // 次の人を呼ぶボタン
             CreateAdvanceButton(canvasObject.transform);
             
-            // オーナー権限チェックボックス
-            CreateOwnerPermissionCheckbox(canvasObject.transform);
+            // ★新規：戻すボタン
+            CreateRestoreButton(canvasObject.transform);
             
             return canvasObject;
         }
@@ -580,48 +580,47 @@ namespace Youkan.WaitingQueue.Editor
             buttonTextRect.sizeDelta = Vector2.zero;
         }
         
-        private void CreateOwnerPermissionCheckbox(Transform parent)
+        private void CreateRestoreButton(Transform parent)
         {
-            // チェックボックスコンテナ
-            GameObject checkboxObject = new GameObject("OwnerPermissionCheckbox");
-            checkboxObject.transform.SetParent(parent, false);
+            GameObject buttonObject = new GameObject("OwnerRestoreButton");
+            buttonObject.transform.SetParent(parent, false);
             
-            RectTransform checkboxRect = checkboxObject.AddComponent<RectTransform>();
-            checkboxRect.anchorMin = new Vector2(0.5f, 0);
-            checkboxRect.anchorMax = new Vector2(0.5f, 0);
-            checkboxRect.anchoredPosition = new Vector2(178, 80);
-            checkboxRect.sizeDelta = new Vector2(120, 80);
+            RectTransform buttonRect = buttonObject.AddComponent<RectTransform>();
+            buttonRect.anchorMin = new Vector2(0.5f, 0);
+            buttonRect.anchorMax = new Vector2(0.5f, 0);
+            buttonRect.anchoredPosition = new Vector2(160, 95);  // 右上に配置
+            buttonRect.sizeDelta = new Vector2(100, 70);  // 小さいサイズ
             
-            // チェックボックス背景（Image）
-            Image checkboxBg = checkboxObject.AddComponent<Image>();
-            checkboxBg.color = new Color(0.2f, 0.2f, 0.3f, 0.8f);
-            checkboxBg.raycastTarget = true;
+            Button button = buttonObject.AddComponent<Button>();
+            button.navigation = new Navigation { mode = Navigation.Mode.None };
             
-            // トグルコンポーネント
-            Toggle toggle = checkboxObject.AddComponent<Toggle>();
-            toggle.isOn = false;
+            Image buttonImage = buttonObject.AddComponent<Image>();
+            buttonImage.color = new Color(0.4f, 0.3f, 0.15f, 1f);  // 茶色（戻す・アンドゥのイメージ）
+            buttonImage.raycastTarget = true;
             
-            // チェックマーク（テクスチャ使用）
-            GameObject checkmarkObject = new GameObject("Checkmark");
-            checkmarkObject.transform.SetParent(checkboxObject.transform, false);
-            Image checkmarkImage = checkmarkObject.AddComponent<Image>();
+            GameObject buttonTextObject = new GameObject("RestoreButtonText");
+            buttonTextObject.transform.SetParent(buttonObject.transform, false);
+            TextMeshProUGUI buttonText = buttonTextObject.AddComponent<TextMeshProUGUI>();
             
-            // テクスチャをロード
-            Sprite checkSprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/WaitingQueue/Runtime/Resources/images/check.png");
-            if (checkSprite != null)
+            TMP_FontAsset japaneseFont = FindJapaneseFontAsset();
+            if (_useJapanese && japaneseFont != null)
             {
-                checkmarkImage.sprite = checkSprite;
+                buttonText.font = japaneseFont;
+                buttonText.text = "戻す";
+            }
+            else
+            {
+                buttonText.text = _useJapanese ? "戻す" : "Restore";
             }
             
-            checkmarkImage.color = Color.white;
-            RectTransform checkmarkRect = checkmarkObject.GetComponent<RectTransform>();
-            checkmarkRect.anchorMin = Vector2.zero;
-            checkmarkRect.anchorMax = Vector2.one;
-            checkmarkRect.sizeDelta = new Vector2(-15, -15);
-            
-            // Toggleのgraphicを設定
-            toggle.graphic = checkmarkImage;
-            checkmarkObject.SetActive(false);  // 初期状態は非表示
+            buttonText.fontSize = 20;
+            buttonText.fontStyle = FontStyles.Bold;
+            buttonText.alignment = TextAlignmentOptions.Center;
+            buttonText.color = Color.white;
+            RectTransform buttonTextRect = buttonTextObject.GetComponent<RectTransform>();
+            buttonTextRect.anchorMin = Vector2.zero;
+            buttonTextRect.anchorMax = Vector2.one;
+            buttonTextRect.sizeDelta = Vector2.zero;
         }
         
         private void CreateAudioSource(Transform parent)
@@ -654,6 +653,7 @@ namespace Youkan.WaitingQueue.Editor
             GameObject root = new GameObject("QueueSystem");
             QueueSystemBuilder b = CreateInstance<QueueSystemBuilder>();
             b.CreateWorldFixedPanel(root.transform);
+            b.CreateOwnerControlPanel(root.transform);
             b.CreatePlayerFollowNotificationPanel(root.transform);
             b.CreateAudioSource(root.transform);
 
@@ -687,8 +687,9 @@ namespace Youkan.WaitingQueue.Editor
             // 1. 各パネルの取得
             Transform worldPanelObj = queueSystem.transform.Find("WorldFixedPanel");
             Transform notifPanelObj = queueSystem.transform.Find("PlayerFollowNotification");
+            Transform ownerPanelObj = queueSystem.transform.Find("OwnerControlPanel");
 
-            // 2. コンポーネントの追加 (公式メソッド使用)
+            // 2. コンポーネントの追加
             QueueManager qm = AddUdonComponent<QueueManager>(queueSystem);
             
             QueueUIManager ui = null;
@@ -698,36 +699,45 @@ namespace Youkan.WaitingQueue.Editor
             if (notifPanelObj) notif = AddUdonComponent<QueueNotificationManager>(notifPanelObj.gameObject);
 
             // エラーチェック
-            if (qm == null) { Debug.LogError("[QueueSystemBuilder] QueueManagerの追加に失敗！スクリプトのエラーを確認してください。"); return; }
+            if (qm == null) { Debug.LogError("[QueueSystemBuilder] QueueManagerの追加に失敗！"); return; }
             if (ui == null) { Debug.LogError("[QueueSystemBuilder] QueueUIManagerの追加に失敗！"); }
             if (notif == null) { Debug.LogError("[QueueSystemBuilder] QueueNotificationManagerの追加に失敗！"); }
 
             Debug.Log("[QueueSystemBuilder] コンポーネントの追加が完了しました");
 
             // 3. UI Managerの設定
-            if (ui != null && worldPanelObj != null)
+            if (ui != null)
             {
-                ui.worldQueueListText = worldPanelObj.Find("ScrollView/Viewport/Content/QueueListText")?.GetComponent<TextMeshProUGUI>();
-                ui.worldScrollRect = worldPanelObj.Find("ScrollView")?.GetComponent<ScrollRect>();
-                ui.worldToggleButton = worldPanelObj.Find("WorldToggleButton")?.GetComponent<Button>();
-                ui.worldButtonText = worldPanelObj.Find("WorldToggleButton/ButtonText")?.GetComponent<TextMeshProUGUI>();
-
-                // ボタン自動設定
-                if (ui.worldToggleButton != null)
+                // --- ゲスト用パネル ---
+                if (worldPanelObj != null)
                 {
-                    UdonBehaviour qmBacking = UdonSharpEditorUtility.GetBackingUdonBehaviour(qm);
-                    if (qmBacking != null)
+                    ui.worldQueueListText = worldPanelObj.Find("ScrollView/Viewport/Content/QueueListText")?.GetComponent<TextMeshProUGUI>();
+                    ui.worldScrollRect = worldPanelObj.Find("ScrollView")?.GetComponent<ScrollRect>();
+                    ui.worldToggleButton = worldPanelObj.Find("WorldToggleButton")?.GetComponent<Button>();
+                    ui.worldButtonText = worldPanelObj.Find("WorldToggleButton/ButtonText")?.GetComponent<TextMeshProUGUI>();
+                    
+                    // ★自動化1: ゲスト用ボタンの配線
+                    if (ui.worldToggleButton != null)
                     {
-                        Button btn = ui.worldToggleButton;
-                        UnityEditor.Events.UnityEventTools.AddStringPersistentListener(
-                            btn.onClick, 
-                            qmBacking.SendCustomEvent, 
-                            "OnToggleButtonClick"
-                        );
-                        Debug.Log("[QueueSystemBuilder] ボタンイベントを設定しました");
+                        UdonBehaviour qmBacking = UdonSharpEditorUtility.GetBackingUdonBehaviour(qm);
+                        if (qmBacking != null)
+                        {
+                            AddUdonEvent(ui.worldToggleButton, "m_OnClick", qmBacking, "OnToggleButtonClick");
+                            Debug.Log("[QueueSystemBuilder] World Toggle Button を自動配線しました");
+                        }
                     }
                 }
-                
+
+                // --- オーナーパネル ---
+                if (ownerPanelObj != null)
+                {
+                    ui.ownerCurrentCalledText = ownerPanelObj.Find("CurrentCalledDisplay/CurrentCalledText")?.GetComponent<TextMeshProUGUI>();
+                    ui.ownerQueueCountText = ownerPanelObj.Find("QueueCountDisplay/QueueCountText")?.GetComponent<TextMeshProUGUI>();
+                    ui.ownerAdvanceButton = ownerPanelObj.Find("OwnerAdvanceButton")?.GetComponent<Button>();
+                    ui.ownerAdvanceButtonText = ownerPanelObj.Find("OwnerAdvanceButton/AdvanceButtonText")?.GetComponent<TextMeshProUGUI>();
+                    ui.ownerRestoreButton = ownerPanelObj.Find("OwnerRestoreButton")?.GetComponent<Button>();  // ★新規
+                }
+
                 UdonSharpEditorUtility.CopyProxyToUdon(ui);
                 Debug.Log("[QueueSystemBuilder] QueueUIManager の設定完了");
             }
@@ -749,12 +759,103 @@ namespace Youkan.WaitingQueue.Editor
             {
                 qm.uiManager = ui;
                 qm.notificationManager = notif;
+                
+                if (ownerPanelObj != null)
+                {
+                    qm.advanceButton = ownerPanelObj.Find("OwnerAdvanceButton")?.GetComponent<Button>();
+                    qm.restoreButton = ownerPanelObj.Find("OwnerRestoreButton")?.GetComponent<Button>();
+
+                    UdonBehaviour qmBacking = UdonSharpEditorUtility.GetBackingUdonBehaviour(qm);
+                    if (qmBacking != null)
+                    {
+                        // ★自動化2: オーナー用「進むボタン」の配線
+                        if (qm.advanceButton != null)
+                        {
+                            AddUdonEvent(qm.advanceButton, "m_OnClick", qmBacking, "AdvanceQueue");
+                            Debug.Log("[QueueSystemBuilder] Advance Button を自動配線しました");
+                        }
+
+                        // ★自動化2.5: オーナー用「戻すボタン」の配線
+                        if (qm.restoreButton != null)
+                        {
+                            AddUdonEvent(qm.restoreButton, "m_OnClick", qmBacking, "RestoreLastRemovedPlayer");
+                            Debug.Log("[QueueSystemBuilder] Restore Button を自動配線しました");
+                        }
+                    }
+                }
 
                 UdonSharpEditorUtility.CopyProxyToUdon(qm);
                 Debug.Log("[QueueSystemBuilder] QueueManager の設定完了");
             }
             
-            Debug.Log("[QueueSystemBuilder] 全セットアップが正常に完了しました！");
+            Debug.Log("[QueueSystemBuilder] ✅ 全セットアップが正常に完了しました！");
+            Debug.Log("[QueueSystemBuilder] 手動設定は不要です。すべて自動配線されています。");
+        }
+
+        /// <summary>
+        /// 【修正版】SerializedObject を使ったイベント登録ヘルパー関数
+        /// プロパティ名の揺らぎ（m_OnValueChanged / onValueChanged など）を自動吸収します。
+        /// </summary>
+        private static void AddUdonEvent(UnityEngine.Object uiComponent, string eventName, UdonBehaviour targetUdon, string udonMethodName)
+        {
+            if (uiComponent == null)
+            {
+                Debug.LogError($"[QueueSystemBuilder] エラー: イベント登録しようとしたコンポーネントが null です。({udonMethodName})");
+                return;
+            }
+
+            SerializedObject so = new SerializedObject(uiComponent);
+            
+            // プロパティを探す（m_ あり/なし 両方試す）
+            SerializedProperty eventProp = so.FindProperty(eventName);
+            if (eventProp == null)
+            {
+                // "m_" がついていないパターン、あるいはついているパターンを試す
+                string altName = eventName.StartsWith("m_") ? eventName.Substring(2) : "m_" + eventName;
+                eventProp = so.FindProperty(altName);
+            }
+
+            // それでも見つからない場合
+            if (eventProp == null)
+            {
+                // Toggleの可能性が高いので、Toggle専用のフォールバック
+                if (uiComponent is Toggle)
+                {
+                    eventProp = so.FindProperty("onValueChanged"); // 一般的なプロパティ名
+                    if (eventProp == null) eventProp = so.FindProperty("m_OnValueChanged"); // 内部名
+                }
+            }
+
+            if (eventProp == null)
+            {
+                Debug.LogError($"[QueueSystemBuilder] エラー: {uiComponent.name} ({uiComponent.GetType().Name}) にイベントプロパティ '{eventName}' が見つかりません。");
+                return;
+            }
+
+            SerializedProperty calls = eventProp.FindPropertyRelative("m_PersistentCalls.m_Calls");
+            
+            if (calls == null)
+            {
+                Debug.LogError($"[QueueSystemBuilder] エラー: {uiComponent.name} の m_PersistentCalls.m_Calls にアクセスできません。");
+                return;
+            }
+
+            // 既存のイベントをクリア
+            calls.ClearArray();
+            
+            // 新しいイベントを追加
+            calls.InsertArrayElementAtIndex(0);
+            SerializedProperty newCall = calls.GetArrayElementAtIndex(0);
+            
+            // UdonのSendCustomEventを実行するように設定
+            newCall.FindPropertyRelative("m_Target").objectReferenceValue = targetUdon;
+            newCall.FindPropertyRelative("m_MethodName").stringValue = "SendCustomEvent";
+            newCall.FindPropertyRelative("m_Mode").enumValueIndex = (int)UnityEngine.Events.PersistentListenerMode.String; // Stringモード
+            newCall.FindPropertyRelative("m_Arguments.m_StringArgument").stringValue = udonMethodName; // 引数にメソッド名
+            newCall.FindPropertyRelative("m_CallState").enumValueIndex = (int)UnityEngine.Events.UnityEventCallState.RuntimeOnly; // Runtime Only
+
+            so.ApplyModifiedProperties();
+            Debug.Log($"[QueueSystemBuilder] イベント登録成功: {uiComponent.name} -> {udonMethodName}");
         }
     }
 }

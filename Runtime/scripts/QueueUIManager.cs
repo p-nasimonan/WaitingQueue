@@ -23,15 +23,14 @@ namespace Youkan.WaitingQueue
         [Header("Owner Control UI References")]
         public Button ownerAdvanceButton;
         public TextMeshProUGUI ownerAdvanceButtonText;
+        public Button ownerRestoreButton;
         public TextMeshProUGUI ownerCurrentCalledText;
         public TextMeshProUGUI ownerQueueCountText;
-        public Toggle ownerPermissionCheckbox;
 
         [Header("Display Settings")]
         [SerializeField] private int maxDisplayLines = 20;
 
         private VRCPlayerApi localPlayer;
-        private bool isLocalPlayerOwner = false; // ボタン押下権を有しているか
         private bool isInQueue = false;
 
         private void Start()
@@ -47,13 +46,12 @@ namespace Youkan.WaitingQueue
             
             // ボタンの初期状態を設定
             UpdateButtonState(false);
-            UpdateOwnerButtonState();
         }
 
         /// <summary>
         /// キューの表示を更新します。
         /// </summary>
-        public void UpdateQueueDisplay(string[] playerNames, string[] playerIds, int localPlayerId, bool playerIsInQueue)
+        public void UpdateQueueDisplay(string[] playerNames, int[] playerIds, int localPlayerId, bool playerIsInQueue, int lastCalledPlayerId)
         {
             isInQueue = playerIsInQueue;
             
@@ -61,9 +59,9 @@ namespace Youkan.WaitingQueue
             
             UpdateQueueListDisplay(playerNames, playerIds, localPlayerId);
             
-            UpdateOwnerDisplay(playerNames, playerIds);
+            Debug.Log($"[QueueUIManager] UpdateQueueDisplay: lastCalledPlayerId='{lastCalledPlayerId}', playerIds.Length={(playerIds != null ? playerIds.Length : 0)}");
             
-            UpdateOwnerButtonState();
+            UpdateOwnerDisplay(playerNames, playerIds, lastCalledPlayerId);
         }
 
         /// <summary>
@@ -100,7 +98,7 @@ namespace Youkan.WaitingQueue
         /// <summary>
         /// キューリストの表示を更新します。
         /// </summary>
-        private void UpdateQueueListDisplay(string[] playerNames, string[] playerIds, int localPlayerId)
+        private void UpdateQueueListDisplay(string[] playerNames, int[] playerIds, int localPlayerId)
         {
             if (worldQueueListText == null) return;
 
@@ -118,11 +116,10 @@ namespace Youkan.WaitingQueue
 
             string displayText = "【キュー】\n";
             int localPlayerIndex = -1;
-            string localPlayerIdStr = localPlayerId.ToString();
 
             for (int i = 0; i < playerIds.Length; i++)
             {
-                if (playerIds[i] == localPlayerIdStr)
+                if (playerIds[i] == localPlayerId)
                 {
                     localPlayerIndex = i;
                     break;
@@ -181,71 +178,46 @@ namespace Youkan.WaitingQueue
         }
 
         /// <summary>
-        /// オーナー専用コントロールパネルの表示を更新します。
+        /// オーナー特用コントロールパネルの表示を更新します。
         /// 次に呼ばれる人と待機人数をリアルタイムで表示します。
         /// </summary>
-        private void UpdateOwnerDisplay(string[] playerNames, string[] playerIds)
+        private void UpdateOwnerDisplay(string[] playerNames, int[] playerIds, int lastCalledPlayerId)
         {
+            Debug.Log($"[QueueUIManager] UpdateOwnerDisplay: playerNames={playerNames}, playerNames.Length={(playerNames != null ? playerNames.Length : -1)}, ownerCurrentCalledText={ownerCurrentCalledText}");
+            
             // 待機人数の表示
             if (ownerQueueCountText != null)
             {
                 int count = (playerNames != null) ? playerNames.Length : 0;
                 ownerQueueCountText.text = $"待機中: {count}人";
+                Debug.Log($"[QueueUIManager] Updated queue count: {count}");
             }
             
-            // 次呼ばれる人をリアルタイム表示
+            // 待機列の一番上の人を表示
             if (ownerCurrentCalledText != null)
             {
+                Debug.Log($"[QueueUIManager] ownerCurrentCalledText is not null, checking playerNames...");
+                
                 if (playerNames != null && playerNames.Length > 0)
                 {
-                    // 配列の0番目（＝先頭の人）を表示
                     ownerCurrentCalledText.text = playerNames[0];
-                    ownerCurrentCalledText.color = new Color(1f, 0.9f, 0.3f); // 黄色で目立たせる
+                    ownerCurrentCalledText.color = new Color(1f, 0.9f, 0.3f); // 黄色
+                    Debug.Log($"[QueueUIManager] Set CurrentCalledText to: {playerNames[0]}");
                 }
                 else
                 {
-                    // 誰もいない時
+                    // 誰も待機していない時
                     ownerCurrentCalledText.text = "-";
-                    ownerCurrentCalledText.color = new Color(0.5f, 0.5f, 0.5f); // グレー
+                    ownerCurrentCalledText.color = Color.gray;
+                    Debug.Log($"[QueueUIManager] playerNames is null or empty, set to '-'");
                 }
+            }
+            else
+            {
+                Debug.LogError("[QueueUIManager] ownerCurrentCalledText is NULL!");
             }
         }
 
-        /// <summary>
-        /// オーナーボタンの有効・無効を更新します。
-        /// このプレイヤーが QueueSystem のオーナーの場合のみ有効。
-        /// </summary>
-        private void UpdateOwnerButtonState()
-        {
-            if (ownerAdvanceButton == null) return;
 
-            // このプレイヤーがオーナーかチェック
-            GameObject queueSystemObject = GameObject.Find("QueueSystem");
-            if (queueSystemObject == null)
-            {
-                Transform parent = gameObject.transform.parent;
-                if (parent != null)
-                {
-                    Transform grandParent = parent.parent;
-                    if (grandParent != null)
-                    {
-                        queueSystemObject = grandParent.gameObject;
-                    }
-                }
-            }
-            
-            isLocalPlayerOwner = queueSystemObject != null && Networking.IsOwner(Networking.LocalPlayer, queueSystemObject);
-
-            // ボタンを有効・無効に設定
-            ownerAdvanceButton.interactable = isLocalPlayerOwner;
-
-            // ボタンの色を変更（無効時はグレーアウト）
-            if (!isLocalPlayerOwner)
-            {
-                var colors = ownerAdvanceButton.colors;
-                colors.disabledColor = new Color(0.5f, 0.5f, 0.5f, 0.5f);
-                ownerAdvanceButton.colors = colors;
-            }
-        }
     }
 }

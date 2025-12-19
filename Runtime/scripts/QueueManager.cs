@@ -1,16 +1,14 @@
 ﻿using UdonSharp;
 using VRC.SDKBase;
 using VRC.Udon;
-using VRC.Udon.Common.Interfaces;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace Youkan.WaitingQueue
 {
     /// <summary>
-    /// キュー管理システムのコアロジックを担当します。
+    /// キューに登録するシステムのコアロジックを担当します。
     /// プレイヤーのエントリー、リスト同期、通知イベント管理を行います。
-    /// UIボタンの処理も統合しています。
     /// </summary>
     [UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
     public class QueueManager : UdonSharpBehaviour
@@ -21,19 +19,21 @@ namespace Youkan.WaitingQueue
         [Header("Manager References")]
         public QueueUIManager uiManager;
         public QueueNotificationManager notificationManager;
-        public Toggle staffModeToggle;
         public Button advanceButton;
         public Image advanceButtonImage;
+        public Button restoreButton;
 
         [Header("Synchronized Data")]
-        [UdonSynced] private string[] queuedPlayerIds = new string[0];
+        [UdonSynced] private int[] queuedPlayerIds = new int[0];
         [UdonSynced] private string[] queuedPlayerNames = new string[0];
-        [UdonSynced] private string lastCalledPlayerId = "";
+        [UdonSynced] private int lastCalledPlayerId = -1;
         [UdonSynced] private int syncCounter = 0;
 
         [Header("Local State")]
         private VRCPlayerApi localPlayer;
         private int lastKnownSyncCounter = -1;
+        private int lastRemovedPlayerId = -1;
+        private string lastRemovedPlayerName = "";
 
         private void Start()
         {
@@ -46,87 +46,57 @@ namespace Youkan.WaitingQueue
                 return;
             }
 
-            // ボタンリスナーはエディタ時に設定されます
-
-            // オーナーの場合のみ初期化
             if (Networking.IsOwner(gameObject))
             {
-                queuedPlayerIds = new string[0];
+                queuedPlayerIds = new int[0];
                 queuedPlayerNames = new string[0];
-                lastCalledPlayerId = "";
+                lastCalledPlayerId = -1;
                 syncCounter = 0;
             }
 
             UpdateUI();
         }
 
-        /// <summary>
-        /// プレイヤーがキューに入れ抜けるをトグルします。
-        /// Udon Custom Event から呼び出されます。
-        /// </summary>
         public void OnToggleButtonClick()
         {
-            Debug.Log("[QueueManager] OnToggleButtonClick called");
             ToggleQueue();
         }
 
-        /// <summary>
-        /// オーナーが次のプレイヤーを呼び出します。
-        /// Unity Button の OnClick() から呼び出されます。
-        /// </summary>
         public void OnAdvanceButtonClick()
         {
             AdvanceQueue();
         }
 
-        /// <summary>
-        /// スタッフトグルの状態が変わったときに呼び出されます。
-        /// ボタンの色と有効/無効を切り替えます。
-        /// </summary>
-        public void OnStaffToggleChanged()
-        {
-            if (advanceButton != null && staffModeToggle != null)
-            {
-                advanceButton.interactable = staffModeToggle.isOn;
-                
-                // ボタンの色を変更
-                if (advanceButtonImage != null)
-                {
-                    if (staffModeToggle.isOn)
-                    {
-                        // チェックがON：明るい緑
-                        advanceButtonImage.color = new Color(0.2f, 0.8f, 0.3f, 1f);
-                    }
-                    else
-                    {
-                        // チェックがOFF：暗い灰色
-                        advanceButtonImage.color = new Color(0.3f, 0.3f, 0.3f, 1f);
-                    }
-                }
-            }
-        }
+
 
         /// <summary>
         /// プレイヤーがキューに入れ抜けるをトグルします。
         /// </summary>
         public void ToggleQueue()
-        {Debug.Log("[QueueManager] ToggleQueue called");
+        {
+            Debug.Log("[QueueManager] ToggleQueue called");
             if (localPlayer == null) return;
+
+            if (!Networking.IsOwner(gameObject))
+            {
+                Networking.SetOwner(localPlayer, gameObject);
+            }
 
             int existingIndex = GetPlayerQueueIndex(localPlayer.playerId);
             
             if (existingIndex >= 0)
             {
-                // 既に列にある場合は抜ける
                 Debug.Log("[QueueManager] Player is in queue, leaving");
-                LeaveQueue();
+                RemoveFromQueueAt(existingIndex);
+                RequestSerialization();
+                UpdateUI();
             }
             else
             {
-                // 列にない場合は入る
                 Debug.Log("[QueueManager] Player not in queue, enqueuing");
-                // 列にない場合は入る
-                EnqueuePlayer();
+                AddToQueue(localPlayer.playerId, localPlayer.displayName);
+                RequestSerialization();
+                UpdateUI();
             }
         }
 
@@ -141,7 +111,6 @@ namespace Youkan.WaitingQueue
                 return;
             }
 
-            // 既に登録済みかチェック
             int existingIndex = GetPlayerQueueIndex(localPlayer.playerId);
             if (existingIndex >= 0)
             {
@@ -149,32 +118,24 @@ namespace Youkan.WaitingQueue
                 return;
             }
 
-            // キューサイズチェック
             if (queuedPlayerIds.Length >= maxQueueSize)
             {
                 Debug.LogWarning("[QueueManager] Queue is full.");
                 return;
             }
 
-            // ▼▼▼ 追加：書き込む前にオーナー権限を取得する！ ▼▼▼
             if (!Networking.IsOwner(gameObject))
             {
                 Networking.SetOwner(localPlayer, gameObject);
             }
-            // ▲▲▲ 追加ここまで ▲▲▲
 
-            // プレイヤーIDと名前をリストに追加
             AddToQueue(localPlayer.playerId, localPlayer.displayName);
-
-            // 全クライアントに同期
             RequestSerialization();
-            
-            // UI更新
             UpdateUI();
         }
 
         /// <summary>
-        /// キューにプレイヤーを追加します（内部メソッド）。
+        /// キューにプレイヤーを追加します。
         /// </summary>
         private void AddToQueue(int playerId, string playerName)
         {
@@ -186,22 +147,18 @@ namespace Youkan.WaitingQueue
 
             int newLength = queuedPlayerIds.Length + 1;
             
-            // 配列を拡張
-            string[] newIds = new string[newLength];
+            int[] newIds = new int[newLength];
             string[] newNames = new string[newLength];
 
-            // 既存データをコピー
             for (int i = 0; i < queuedPlayerIds.Length; i++)
             {
                 newIds[i] = queuedPlayerIds[i];
                 newNames[i] = queuedPlayerNames[i];
             }
 
-            // 新しいプレイヤーを追加
-            newIds[newLength - 1] = playerId.ToString();
+            newIds[newLength - 1] = playerId;
             newNames[newLength - 1] = playerName;
 
-            // 配列を更新
             queuedPlayerIds = newIds;
             queuedPlayerNames = newNames;
 
@@ -214,16 +171,13 @@ namespace Youkan.WaitingQueue
         /// </summary>
         public int GetPlayerQueueIndex(int playerId)
         {
-            string playerIdStr = playerId.ToString();
-            
             for (int i = 0; i < queuedPlayerIds.Length; i++)
             {
-                if (queuedPlayerIds[i] == playerIdStr)
+                if (queuedPlayerIds[i] == playerId)
                 {
                     return i;
                 }
             }
-
             return -1;
         }
 
@@ -247,60 +201,42 @@ namespace Youkan.WaitingQueue
 
         /// <summary>
         /// オーナーが次のプレイヤーに進める処理を実行します。
-        /// キューの先頭を削除し、次のプレイヤーに通知を送ります。
         /// </summary>
         public void AdvanceQueue()
         {
-            // スタッフ権限チェック
-            if (staffModeToggle != null && !staffModeToggle.isOn)
-            {
-                Debug.LogWarning("[QueueManager] スタッフモードが無効なため操作できません。");
-            }
-
             if (!Networking.IsOwner(gameObject))
             {
                 Networking.SetOwner(localPlayer, gameObject);
             }
 
-            // 前回呼ばれた人がいる場合、その人を列から削除
-            if (!string.IsNullOrEmpty(lastCalledPlayerId))
+            if (lastCalledPlayerId != -1)
             {
-                if (int.TryParse(lastCalledPlayerId, out int lastCalledId))
+                int lastCalledIndex = GetPlayerQueueIndex(lastCalledPlayerId);
+                if (lastCalledIndex >= 0)
                 {
-                    int lastCalledIndex = GetPlayerQueueIndex(lastCalledId);
-                    if (lastCalledIndex >= 0)
-                    {
-                        RemoveFromQueueAt(lastCalledIndex);
-                        Debug.Log($"[QueueManager] Removed previously called player (ID: {lastCalledPlayerId}) from queue");
-                    }
+                    RemoveFromQueueAt(lastCalledIndex);
+                    Debug.Log($"[QueueManager] Removed previously called player (ID: {lastCalledPlayerId}) from queue");
                 }
             }
 
-            // 列が空になったかチェック
             if (queuedPlayerIds.Length == 0)
             {
-                lastCalledPlayerId = "";
+                lastCalledPlayerId = -1;
                 RequestSerialization();
                 UpdateUI();
                 Debug.LogWarning("[QueueManager] Queue is now empty.");
                 return;
             }
 
-            // 新しい先頭の人を呼び出す
             lastCalledPlayerId = queuedPlayerIds[0];
-            
-            // 同期カウンターを増やして通知をトリガー
             syncCounter++;
 
-            // 全クライアントに同期
             RequestSerialization();
-            
-            // UI更新（リアルタイムで次の人が表示される）
             UpdateUI();
         }
 
         /// <summary>
-        /// 指定されたインデックスのプレイヤーをキューから削除します（内部メソッド）。
+        /// 指定されたインデックスのプレイヤーをキューから削除します。
         /// </summary>
         private void RemoveFromQueueAt(int index)
         {
@@ -310,29 +246,27 @@ namespace Youkan.WaitingQueue
                 return;
             }
 
-            string removedPlayerName = queuedPlayerNames[index];
-            string removedPlayerId = queuedPlayerIds[index];
+            lastRemovedPlayerId = queuedPlayerIds[index];
+            lastRemovedPlayerName = queuedPlayerNames[index];
 
             int newLength = queuedPlayerIds.Length - 1;
 
             if (newLength == 0)
             {
-                queuedPlayerIds = new string[0];
+                queuedPlayerIds = new int[0];
                 queuedPlayerNames = new string[0];
             }
             else
             {
-                string[] newIds = new string[newLength];
+                int[] newIds = new int[newLength];
                 string[] newNames = new string[newLength];
 
-                // 削除されるインデックスより前のデータをコピー
                 for (int i = 0; i < index; i++)
                 {
                     newIds[i] = queuedPlayerIds[i];
                     newNames[i] = queuedPlayerNames[i];
                 }
 
-                // 削除されるインデックスより後ろのデータをコピー
                 for (int i = index + 1; i < queuedPlayerIds.Length; i++)
                 {
                     newIds[i - 1] = queuedPlayerIds[i];
@@ -343,7 +277,7 @@ namespace Youkan.WaitingQueue
                 queuedPlayerNames = newNames;
             }
 
-            Debug.Log($"[QueueManager] Player {removedPlayerName} (ID: {removedPlayerId}) has been removed from the queue.");
+            Debug.Log($"[QueueManager] Player {lastRemovedPlayerName} (ID: {lastRemovedPlayerId}) has been removed from the queue.");
         }
 
         /// <summary>
@@ -356,41 +290,16 @@ namespace Youkan.WaitingQueue
             int index = GetPlayerQueueIndex(localPlayer.playerId);
             if (index >= 0)
             {
-                // ▼▼▼ 追加：書き込む前にオーナー権限を取得する！ ▼▼▼
                 if (!Networking.IsOwner(gameObject))
                 {
                     Networking.SetOwner(localPlayer, gameObject);
                 }
-                // ▲▲▲ 追加ここまで ▲▲▲
 
                 RemoveFromQueueAt(index);
                 RequestSerialization();
                 UpdateUI();
                 Debug.Log($"[QueueManager] Player {localPlayer.displayName} has left the queue.");
             }
-            else
-            {
-                Debug.LogWarning("[QueueManager] Player is not in the queue.");
-            }
-        }
-
-        /// <summary>
-        /// 現在のキューの状態をデバッグログに出力します。
-        /// </summary>
-        public void PrintQueueInfo()
-        {
-            if (queuedPlayerIds.Length == 0)
-            {
-                Debug.Log("[QueueManager] Queue is empty.");
-                return;
-            }
-
-            string queueInfo = "[QueueManager] Current Queue:\n";
-            for (int i = 0; i < queuedPlayerIds.Length; i++)
-            {
-                queueInfo += $"  {i + 1}. {queuedPlayerNames[i]} (ID: {queuedPlayerIds[i]})\n";
-            }
-            Debug.Log(queueInfo);
         }
 
         /// <summary>
@@ -400,19 +309,16 @@ namespace Youkan.WaitingQueue
         {
             Debug.Log("[QueueManager] Queue data has been synchronized.");
             
-            // 同期カウンターが変更された場合、通知イベントをチェック
-            if (syncCounter != lastKnownSyncCounter && lastCalledPlayerId != "")
+            if (syncCounter != lastKnownSyncCounter && lastCalledPlayerId != -1)
             {
                 lastKnownSyncCounter = syncCounter;
                 
-                // 通知マネージャーに通知を送信
                 if (notificationManager != null)
                 {
-                    notificationManager.TriggerNotification(lastCalledPlayerId);
+                    notificationManager.TriggerNotification(lastCalledPlayerId.ToString());
                 }
             }
             
-            // UI更新
             UpdateUI();
         }
 
@@ -430,7 +336,7 @@ namespace Youkan.WaitingQueue
             if (uiManager != null)
             {
                 bool isInQueue = IsPlayerInQueue();
-                uiManager.UpdateQueueDisplay(queuedPlayerNames, queuedPlayerIds, localPlayer.playerId, isInQueue);
+                uiManager.UpdateQueueDisplay(queuedPlayerNames, queuedPlayerIds, localPlayer.playerId, isInQueue, lastCalledPlayerId);
             }
         }
 
@@ -444,9 +350,46 @@ namespace Youkan.WaitingQueue
         }
 
         /// <summary>
+        /// 最後に削除したプレイヤーを復元します。
+        /// </summary>
+        public void RestoreLastRemovedPlayer()
+        {
+            if (lastRemovedPlayerId == -1)
+            {
+                Debug.LogWarning("[QueueManager] No player to restore.");
+                return;
+            }
+
+            if (!Networking.IsOwner(gameObject))
+            {
+                Networking.SetOwner(localPlayer, gameObject);
+            }
+
+            if (GetPlayerQueueIndex(lastRemovedPlayerId) >= 0)
+            {
+                Debug.LogWarning("[QueueManager] Removed player is already in queue.");
+                return;
+            }
+
+            if (queuedPlayerIds.Length >= maxQueueSize)
+            {
+                Debug.LogWarning("[QueueManager] Queue is full. Cannot restore.");
+                return;
+            }
+
+            AddToQueue(lastRemovedPlayerId, lastRemovedPlayerName);
+            lastRemovedPlayerId = -1;
+            lastRemovedPlayerName = "";
+            
+            RequestSerialization();
+            UpdateUI();
+            Debug.Log($"[QueueManager] Restored player: {lastRemovedPlayerName}");
+        }
+
+        /// <summary>
         /// キューデータを取得します（外部参照用）。
         /// </summary>
         public string[] GetQueuePlayerNames() => queuedPlayerNames;
-        public string[] GetQueuePlayerIds() => queuedPlayerIds;
+        public int[] GetQueuePlayerIds() => queuedPlayerIds;
     }
 }
