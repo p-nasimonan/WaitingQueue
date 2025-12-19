@@ -20,21 +20,18 @@ namespace Youkan.WaitingQueue
         public Button worldToggleButton;
         public TextMeshProUGUI worldButtonText;
 
-        [Header("Player Notification Monitor UI")]
-        [SerializeField] private Button playerToggleButton;
-        [SerializeField] private TextMeshProUGUI playerButtonText;
-        [SerializeField] private TextMeshProUGUI playerStatusText;
-
-        [Header("Button Text Configuration")]
-        [SerializeField] private string joinButtonText = "待機列に入る";
-        [SerializeField] private string leaveButtonText = "待機列から出る";
+        [Header("Owner Control UI References")]
+        public Button ownerAdvanceButton;
+        public TextMeshProUGUI ownerAdvanceButtonText;
+        public TextMeshProUGUI ownerCurrentCalledText;
+        public TextMeshProUGUI ownerQueueCountText;
+        public Toggle ownerPermissionCheckbox;
 
         [Header("Display Settings")]
         [SerializeField] private int maxDisplayLines = 20;
-        [SerializeField] private bool highlightCurrentPlayer = true;
-        [SerializeField] private Color highlightColor = Color.yellow;
 
         private VRCPlayerApi localPlayer;
+        private bool isLocalPlayerOwner = false; // ボタン押下権を有しているか
         private bool isInQueue = false;
 
         private void Start()
@@ -48,7 +45,9 @@ namespace Youkan.WaitingQueue
                 return;
             }
             
+            // ボタンの初期状態を設定
             UpdateButtonState(false);
+            UpdateOwnerButtonState();
         }
 
         /// <summary>
@@ -62,7 +61,9 @@ namespace Youkan.WaitingQueue
             
             UpdateQueueListDisplay(playerNames, playerIds, localPlayerId);
             
-            UpdatePlayerStatus(playerNames, playerIds, localPlayerId);
+            UpdateOwnerDisplay(playerNames, playerIds);
+            
+            UpdateOwnerButtonState();
         }
 
         /// <summary>
@@ -78,11 +79,11 @@ namespace Youkan.WaitingQueue
         }
 
         /// <summary>
-        /// ボタンのテキストと状態を更新します。
+        /// ボタンのテキストを更新します。
         /// </summary>
         private void UpdateButtonState(bool inQueue)
         {
-            string buttonText = inQueue ? leaveButtonText : joinButtonText;
+            string buttonText = inQueue ? "待機列から出る" : "待機列に入る";
             Debug.Log($"[QueueUIManager] UpdateButtonState: inQueue={inQueue}, buttonText={buttonText}");
             
             if (worldButtonText != null)
@@ -93,11 +94,6 @@ namespace Youkan.WaitingQueue
             else
             {
                 Debug.LogWarning("[QueueUIManager] worldButtonText is null!");
-            }
-            
-            if (playerButtonText != null)
-            {
-                playerButtonText.text = buttonText;
             }
         }
 
@@ -158,9 +154,9 @@ namespace Youkan.WaitingQueue
                 string prefix = $"{i + 1}. ";
                 string playerName = playerNames[i];
                 
-                if (highlightCurrentPlayer && i == localPlayerIndex)
+                if (i == localPlayerIndex)
                 {
-                    string hexColor = ColorToHexString(highlightColor);
+                    string hexColor = ColorToHexString(new Color(1f, 1f, 0f));
                     displayText += $"<color=#{hexColor}><b>→{prefix}{playerName} (あなた)</b></color>\n";
                 }
                 else
@@ -185,37 +181,70 @@ namespace Youkan.WaitingQueue
         }
 
         /// <summary>
-        /// プレイヤー通知モニターのステータステキストを更新します。
+        /// オーナー専用コントロールパネルの表示を更新します。
+        /// 次に呼ばれる人と待機人数をリアルタイムで表示します。
         /// </summary>
-        private void UpdatePlayerStatus(string[] playerNames, string[] playerIds, int localPlayerId)
+        private void UpdateOwnerDisplay(string[] playerNames, string[] playerIds)
         {
-            if (playerStatusText == null) return;
-
-            if (playerNames == null || playerIds == null || playerIds.Length == 0)
+            // 待機人数の表示
+            if (ownerQueueCountText != null)
             {
-                playerStatusText.text = "キューに登録されていません";
-                return;
+                int count = (playerNames != null) ? playerNames.Length : 0;
+                ownerQueueCountText.text = $"待機中: {count}人";
             }
-
-            string localPlayerIdStr = localPlayerId.ToString();
-            int position = -1;
-
-            for (int i = 0; i < playerIds.Length; i++)
+            
+            // 次呼ばれる人をリアルタイム表示
+            if (ownerCurrentCalledText != null)
             {
-                if (playerIds[i] == localPlayerIdStr)
+                if (playerNames != null && playerNames.Length > 0)
                 {
-                    position = i + 1;
-                    break;
+                    // 配列の0番目（＝先頭の人）を表示
+                    ownerCurrentCalledText.text = playerNames[0];
+                    ownerCurrentCalledText.color = new Color(1f, 0.9f, 0.3f); // 黄色で目立たせる
+                }
+                else
+                {
+                    // 誰もいない時
+                    ownerCurrentCalledText.text = "-";
+                    ownerCurrentCalledText.color = new Color(0.5f, 0.5f, 0.5f); // グレー
                 }
             }
+        }
 
-            if (position > 0)
+        /// <summary>
+        /// オーナーボタンの有効・無効を更新します。
+        /// このプレイヤーが QueueSystem のオーナーの場合のみ有効。
+        /// </summary>
+        private void UpdateOwnerButtonState()
+        {
+            if (ownerAdvanceButton == null) return;
+
+            // このプレイヤーがオーナーかチェック
+            GameObject queueSystemObject = GameObject.Find("QueueSystem");
+            if (queueSystemObject == null)
             {
-                playerStatusText.text = $"現在の番号: {position}番目 / 全{playerNames.Length}人";
+                Transform parent = gameObject.transform.parent;
+                if (parent != null)
+                {
+                    Transform grandParent = parent.parent;
+                    if (grandParent != null)
+                    {
+                        queueSystemObject = grandParent.gameObject;
+                    }
+                }
             }
-            else
+            
+            isLocalPlayerOwner = queueSystemObject != null && Networking.IsOwner(Networking.LocalPlayer, queueSystemObject);
+
+            // ボタンを有効・無効に設定
+            ownerAdvanceButton.interactable = isLocalPlayerOwner;
+
+            // ボタンの色を変更（無効時はグレーアウト）
+            if (!isLocalPlayerOwner)
             {
-                playerStatusText.text = "キューに登録されていません";
+                var colors = ownerAdvanceButton.colors;
+                colors.disabledColor = new Color(0.5f, 0.5f, 0.5f, 0.5f);
+                ownerAdvanceButton.colors = colors;
             }
         }
     }

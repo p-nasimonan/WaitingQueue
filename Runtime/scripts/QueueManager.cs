@@ -21,6 +21,9 @@ namespace Youkan.WaitingQueue
         [Header("Manager References")]
         public QueueUIManager uiManager;
         public QueueNotificationManager notificationManager;
+        public Toggle staffModeToggle;
+        public Button advanceButton;
+        public Image advanceButtonImage;
 
         [Header("Synchronized Data")]
         [UdonSynced] private string[] queuedPlayerIds = new string[0];
@@ -74,6 +77,33 @@ namespace Youkan.WaitingQueue
         public void OnAdvanceButtonClick()
         {
             AdvanceQueue();
+        }
+
+        /// <summary>
+        /// スタッフトグルの状態が変わったときに呼び出されます。
+        /// ボタンの色と有効/無効を切り替えます。
+        /// </summary>
+        public void OnStaffToggleChanged()
+        {
+            if (advanceButton != null && staffModeToggle != null)
+            {
+                advanceButton.interactable = staffModeToggle.isOn;
+                
+                // ボタンの色を変更
+                if (advanceButtonImage != null)
+                {
+                    if (staffModeToggle.isOn)
+                    {
+                        // チェックがON：明るい緑
+                        advanceButtonImage.color = new Color(0.2f, 0.8f, 0.3f, 1f);
+                    }
+                    else
+                    {
+                        // チェックがOFF：暗い灰色
+                        advanceButtonImage.color = new Color(0.3f, 0.3f, 0.3f, 1f);
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -221,34 +251,51 @@ namespace Youkan.WaitingQueue
         /// </summary>
         public void AdvanceQueue()
         {
-            if (localPlayer == null) return;
+            // スタッフ権限チェック
+            if (staffModeToggle != null && !staffModeToggle.isOn)
+            {
+                Debug.LogWarning("[QueueManager] スタッフモードが無効なため操作できません。");
+            }
 
-            // ▼▼▼ 修正：オーナーじゃなかったら、諦めるのではなく取り返す ▼▼▼
             if (!Networking.IsOwner(gameObject))
             {
                 Networking.SetOwner(localPlayer, gameObject);
             }
-            // ▲▲▲ 修正ここまで ▲▲▲
 
+            // 前回呼ばれた人がいる場合、その人を列から削除
+            if (!string.IsNullOrEmpty(lastCalledPlayerId))
+            {
+                if (int.TryParse(lastCalledPlayerId, out int lastCalledId))
+                {
+                    int lastCalledIndex = GetPlayerQueueIndex(lastCalledId);
+                    if (lastCalledIndex >= 0)
+                    {
+                        RemoveFromQueueAt(lastCalledIndex);
+                        Debug.Log($"[QueueManager] Removed previously called player (ID: {lastCalledPlayerId}) from queue");
+                    }
+                }
+            }
+
+            // 列が空になったかチェック
             if (queuedPlayerIds.Length == 0)
             {
-                Debug.LogWarning("[QueueManager] Queue is empty.");
+                lastCalledPlayerId = "";
+                RequestSerialization();
+                UpdateUI();
+                Debug.LogWarning("[QueueManager] Queue is now empty.");
                 return;
             }
 
-            // 呼び出されたプレイヤーのIDを記録
+            // 新しい先頭の人を呼び出す
             lastCalledPlayerId = queuedPlayerIds[0];
             
             // 同期カウンターを増やして通知をトリガー
             syncCounter++;
 
-            // 先頭を削除
-            RemoveFromQueueAt(0);
-
             // 全クライアントに同期
             RequestSerialization();
             
-            // UI更新
+            // UI更新（リアルタイムで次の人が表示される）
             UpdateUI();
         }
 

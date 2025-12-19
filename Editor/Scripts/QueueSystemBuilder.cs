@@ -4,6 +4,8 @@ using UnityEngine.UI;
 using TMPro;
 using VRC.Udon;
 using VRC.Core;
+using UdonSharp;
+using UdonSharpEditor; // ★これ重要
 using System.Linq;
 
 namespace Youkan.WaitingQueue.Editor
@@ -347,6 +349,281 @@ namespace Youkan.WaitingQueue.Editor
             return canvasObject;
         }
         
+        /// <summary>
+        /// オーナー専用コントロールパネル（次の人を呼ぶボタンと現在の状態表示）
+        /// </summary>
+        private GameObject CreateOwnerControlPanel(Transform parent)
+        {
+            GameObject canvasObject = new GameObject("OwnerControlPanel");
+            canvasObject.transform.SetParent(parent);
+            canvasObject.transform.localPosition = new Vector3(0.7f, 0.5f, 0f);
+            canvasObject.transform.localRotation = Quaternion.identity;
+            
+            // Canvas設定
+            Canvas canvas = canvasObject.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.WorldSpace;
+            
+            CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
+            scaler.dynamicPixelsPerUnit = 10;
+            
+            canvasObject.AddComponent<GraphicRaycaster>();
+            
+            // VRC UI Shape 設定
+            canvasObject.AddComponent<VRC.SDK3.Components.VRCUiShape>();
+            
+            // レイヤーを Default に設定
+            canvasObject.layer = LayerMask.NameToLayer("Default");
+            
+            RectTransform canvasRect = canvasObject.GetComponent<RectTransform>();
+            canvasRect.sizeDelta = new Vector2(500, 600);
+            canvasRect.localScale = new Vector3(0.001f, 0.001f, 0.001f);
+            
+            // 背景パネル
+            GameObject backgroundPanel = new GameObject("Background");
+            backgroundPanel.transform.SetParent(canvasObject.transform, false);
+            Image bgImage = backgroundPanel.AddComponent<Image>();
+            bgImage.color = new Color(0.15f, 0.15f, 0.2f, 0.95f);
+            RectTransform bgRect = backgroundPanel.GetComponent<RectTransform>();
+            bgRect.anchorMin = Vector2.zero;
+            bgRect.anchorMax = Vector2.one;
+            bgRect.sizeDelta = Vector2.zero;
+            
+            // タイトル
+            CreateOwnerTitle(canvasObject.transform);
+            
+            // 現在呼ばれている人の表示
+            CreateCurrentCalledDisplay(canvasObject.transform);
+            
+            // 待機人数表示
+            CreateQueueCountDisplay(canvasObject.transform);
+            
+            // 次の人を呼ぶボタン
+            CreateAdvanceButton(canvasObject.transform);
+            
+            // オーナー権限チェックボックス
+            CreateOwnerPermissionCheckbox(canvasObject.transform);
+            
+            return canvasObject;
+        }
+        
+        private void CreateOwnerTitle(Transform parent)
+        {
+            GameObject titleObject = new GameObject("OwnerTitle");
+            titleObject.transform.SetParent(parent, false);
+            TextMeshProUGUI titleText = titleObject.AddComponent<TextMeshProUGUI>();
+            
+            TMP_FontAsset japaneseFont = FindJapaneseFontAsset();
+            if (_useJapanese && japaneseFont != null)
+            {
+                titleText.font = japaneseFont;
+                titleText.text = "オーナーコントロール";
+            }
+            else
+            {
+                titleText.text = _useJapanese ? "オーナーコントロール" : "Owner Control";
+            }
+            
+            titleText.fontSize = 32;
+            titleText.alignment = TextAlignmentOptions.Center;
+            titleText.color = new Color(0.3f, 0.8f, 1f);
+            RectTransform titleRect = titleObject.GetComponent<RectTransform>();
+            titleRect.anchorMin = new Vector2(0, 1);
+            titleRect.anchorMax = new Vector2(1, 1);
+            titleRect.anchoredPosition = new Vector2(0, -30);
+            titleRect.sizeDelta = new Vector2(-40, 50);
+        }
+        
+        private void CreateCurrentCalledDisplay(Transform parent)
+        {
+            GameObject displayObject = new GameObject("CurrentCalledDisplay");
+            displayObject.transform.SetParent(parent, false);
+            
+            // 背景
+            Image bgImage = displayObject.AddComponent<Image>();
+            bgImage.color = new Color(0.2f, 0.2f, 0.3f, 0.8f);
+            RectTransform displayRect = displayObject.GetComponent<RectTransform>();
+            displayRect.anchorMin = new Vector2(0.5f, 1);
+            displayRect.anchorMax = new Vector2(0.5f, 1);
+            displayRect.anchoredPosition = new Vector2(0, -120);
+            displayRect.sizeDelta = new Vector2(440, 150);
+            
+            // ラベル
+            GameObject labelObject = new GameObject("Label");
+            labelObject.transform.SetParent(displayObject.transform, false);
+            TextMeshProUGUI labelText = labelObject.AddComponent<TextMeshProUGUI>();
+            
+            TMP_FontAsset japaneseFont = FindJapaneseFontAsset();
+            if (_useJapanese && japaneseFont != null)
+            {
+                labelText.font = japaneseFont;
+                labelText.text = "現在呼び出し中";
+            }
+            else
+            {
+                labelText.text = _useJapanese ? "現在呼び出し中" : "Currently Called";
+            }
+            
+            labelText.fontSize = 20;
+            labelText.alignment = TextAlignmentOptions.Center;
+            labelText.color = new Color(0.7f, 0.7f, 0.7f);
+            RectTransform labelRect = labelObject.GetComponent<RectTransform>();
+            labelRect.anchorMin = new Vector2(0, 1);
+            labelRect.anchorMax = new Vector2(1, 1);
+            labelRect.anchoredPosition = new Vector2(0, -15);
+            labelRect.sizeDelta = new Vector2(-20, 30);
+            
+            // プレイヤー名表示
+            GameObject nameObject = new GameObject("CurrentCalledText");
+            nameObject.transform.SetParent(displayObject.transform, false);
+            TextMeshProUGUI nameText = nameObject.AddComponent<TextMeshProUGUI>();
+            
+            if (_useJapanese && japaneseFont != null)
+            {
+                nameText.font = japaneseFont;
+                nameText.text = "-";
+            }
+            else
+            {
+                nameText.text = "-";
+            }
+            
+            nameText.fontSize = 36;
+            nameText.fontStyle = FontStyles.Bold;
+            nameText.alignment = TextAlignmentOptions.Center;
+            nameText.color = new Color(1f, 0.9f, 0.3f);
+            RectTransform nameRect = nameObject.GetComponent<RectTransform>();
+            nameRect.anchorMin = new Vector2(0, 0);
+            nameRect.anchorMax = new Vector2(1, 1);
+            nameRect.anchoredPosition = new Vector2(0, -15);
+            nameRect.sizeDelta = new Vector2(-20, -50);
+        }
+        
+        private void CreateQueueCountDisplay(Transform parent)
+        {
+            GameObject countObject = new GameObject("QueueCountDisplay");
+            countObject.transform.SetParent(parent, false);
+            
+            // 背景
+            Image bgImage = countObject.AddComponent<Image>();
+            bgImage.color = new Color(0.2f, 0.2f, 0.3f, 0.8f);
+            RectTransform countRect = countObject.GetComponent<RectTransform>();
+            countRect.anchorMin = new Vector2(0.5f, 1);
+            countRect.anchorMax = new Vector2(0.5f, 1);
+            countRect.anchoredPosition = new Vector2(0, -300);
+            countRect.sizeDelta = new Vector2(440, 80);
+            
+            // 待機人数テキスト
+            GameObject textObject = new GameObject("QueueCountText");
+            textObject.transform.SetParent(countObject.transform, false);
+            TextMeshProUGUI countText = textObject.AddComponent<TextMeshProUGUI>();
+            
+            TMP_FontAsset japaneseFont = FindJapaneseFontAsset();
+            if (_useJapanese && japaneseFont != null)
+            {
+                countText.font = japaneseFont;
+                countText.text = "待機中: 0人";
+            }
+            else
+            {
+                countText.text = _useJapanese ? "待機中: 0人" : "Waiting: 0";
+            }
+            
+            countText.fontSize = 28;
+            countText.alignment = TextAlignmentOptions.Center;
+            countText.color = Color.white;
+            RectTransform textRect = textObject.GetComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.sizeDelta = new Vector2(-20, -20);
+        }
+        
+        private void CreateAdvanceButton(Transform parent)
+        {
+            GameObject buttonObject = new GameObject("OwnerAdvanceButton");
+            buttonObject.transform.SetParent(parent, false);
+            
+            RectTransform buttonRect = buttonObject.AddComponent<RectTransform>();
+            buttonRect.anchorMin = new Vector2(0.5f, 0);
+            buttonRect.anchorMax = new Vector2(0.5f, 0);
+            buttonRect.anchoredPosition = new Vector2(-40, 80);
+            buttonRect.sizeDelta = new Vector2(280, 100);
+            
+            Button button = buttonObject.AddComponent<Button>();
+            button.navigation = new Navigation { mode = Navigation.Mode.None };
+            
+            Image buttonImage = buttonObject.AddComponent<Image>();
+            buttonImage.color = new Color(0.15f, 0.4f, 0.15f, 1f);  // 暗めの緑
+            buttonImage.raycastTarget = true;
+            
+            GameObject buttonTextObject = new GameObject("AdvanceButtonText");
+            buttonTextObject.transform.SetParent(buttonObject.transform, false);
+            TextMeshProUGUI buttonText = buttonTextObject.AddComponent<TextMeshProUGUI>();
+            
+            TMP_FontAsset japaneseFont = FindJapaneseFontAsset();
+            if (_useJapanese && japaneseFont != null)
+            {
+                buttonText.font = japaneseFont;
+                buttonText.text = "次の人を呼ぶ";
+            }
+            else
+            {
+                buttonText.text = _useJapanese ? "次の人を呼ぶ" : "Call Next Person";
+            }
+            
+            buttonText.fontSize = 28;
+            buttonText.fontStyle = FontStyles.Bold;
+            buttonText.alignment = TextAlignmentOptions.Center;
+            buttonText.color = Color.white;
+            RectTransform buttonTextRect = buttonTextObject.GetComponent<RectTransform>();
+            buttonTextRect.anchorMin = Vector2.zero;
+            buttonTextRect.anchorMax = Vector2.one;
+            buttonTextRect.sizeDelta = Vector2.zero;
+        }
+        
+        private void CreateOwnerPermissionCheckbox(Transform parent)
+        {
+            // チェックボックスコンテナ
+            GameObject checkboxObject = new GameObject("OwnerPermissionCheckbox");
+            checkboxObject.transform.SetParent(parent, false);
+            
+            RectTransform checkboxRect = checkboxObject.AddComponent<RectTransform>();
+            checkboxRect.anchorMin = new Vector2(0.5f, 0);
+            checkboxRect.anchorMax = new Vector2(0.5f, 0);
+            checkboxRect.anchoredPosition = new Vector2(178, 80);
+            checkboxRect.sizeDelta = new Vector2(120, 80);
+            
+            // チェックボックス背景（Image）
+            Image checkboxBg = checkboxObject.AddComponent<Image>();
+            checkboxBg.color = new Color(0.2f, 0.2f, 0.3f, 0.8f);
+            checkboxBg.raycastTarget = true;
+            
+            // トグルコンポーネント
+            Toggle toggle = checkboxObject.AddComponent<Toggle>();
+            toggle.isOn = false;
+            
+            // チェックマーク（テクスチャ使用）
+            GameObject checkmarkObject = new GameObject("Checkmark");
+            checkmarkObject.transform.SetParent(checkboxObject.transform, false);
+            Image checkmarkImage = checkmarkObject.AddComponent<Image>();
+            
+            // テクスチャをロード
+            Sprite checkSprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/WaitingQueue/Runtime/Resources/images/check.png");
+            if (checkSprite != null)
+            {
+                checkmarkImage.sprite = checkSprite;
+            }
+            
+            checkmarkImage.color = Color.white;
+            RectTransform checkmarkRect = checkmarkObject.GetComponent<RectTransform>();
+            checkmarkRect.anchorMin = Vector2.zero;
+            checkmarkRect.anchorMax = Vector2.one;
+            checkmarkRect.sizeDelta = new Vector2(-15, -15);
+            
+            // Toggleのgraphicを設定
+            toggle.graphic = checkmarkImage;
+            checkmarkObject.SetActive(false);  // 初期状態は非表示
+        }
+        
         private void CreateAudioSource(Transform parent)
         {
             GameObject audioObject = new GameObject("NotificationAudio");
@@ -357,108 +634,127 @@ namespace Youkan.WaitingQueue.Editor
         }
 
         /// <summary>
-        /// 外部から呼び出すための静的メソッド（QueueSystemSetupから使用）
-        /// UIをプレハブ化してシーンに配置する
+        /// UdonSharp公式の拡張メソッドを使って安全にコンポーネントを追加する
+        /// </summary>
+        private static T AddUdonComponent<T>(GameObject target) where T : UdonSharpBehaviour
+        {
+            // ★超重要：AddUdonSharpComponent<T>() 拡張メソッドが一番確実です。
+            // クラスの型から自動的に正しいAssetを見つけて割り当ててくれます。
+            return target.AddUdonSharpComponent<T>();
+        }
+
+        /// <summary>
+        /// 外部から呼び出すための静的メソッド
         /// </summary>
         public static string CreateQueueSystemUIStatic(bool useJapanese, TMP_FontAsset fontAsset)
         {
             _useJapanese = useJapanese;
-            _japaneseFontAsset = fontAsset;
+            _japaneseFontAsset = fontAsset ?? FindJapaneseFontAsset();
 
-            // 日本語の場合、フォントアセットの確認
-            if (_useJapanese && _japaneseFontAsset == null)
-            {
-                Debug.LogError("[QueueSystemBuilder] Japanese font asset is required but not provided");
-                EditorUtility.DisplayDialog("エラー", "日本語フォントアセットが見つかりません。先にフォントを作成してください。", "OK");
-                return null;
-            }
+            GameObject root = new GameObject("QueueSystem");
+            QueueSystemBuilder b = CreateInstance<QueueSystemBuilder>();
+            b.CreateWorldFixedPanel(root.transform);
+            b.CreatePlayerFollowNotificationPanel(root.transform);
+            b.CreateAudioSource(root.transform);
 
-            GameObject rootObject = new GameObject("QueueSystem");
-
-            // UIパネル作成
-            QueueSystemBuilder builder = CreateInstance<QueueSystemBuilder>();
-            builder.CreateWorldFixedPanel(rootObject.transform);
-            builder.CreatePlayerFollowNotificationPanel(rootObject.transform);
-            builder.CreateAudioSource(rootObject.transform);
-
-            // プレハブとして保存
-            string prefabPath = "Assets/WaitingQueue/Prefabs/QueueSystem.prefab";
-            string prefabDir = System.IO.Path.GetDirectoryName(prefabPath);
-            if (!System.IO.Directory.Exists(prefabDir))
-            {
-                System.IO.Directory.CreateDirectory(prefabDir);
-            }
-
-            PrefabUtility.SaveAsPrefabAsset(rootObject, prefabPath);
-            
-            // シーンにプレハブを配置
-            GameObject sceneInstance = PrefabUtility.InstantiatePrefab(
-                AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath)
-            ) as GameObject;
-            
-            if (sceneInstance != null)
-            {
-                sceneInstance.name = "QueueSystem";
+            // プレハブ保存
+            string path = "Assets/WaitingQueue/Prefabs/QueueSystem.prefab";
+            if (!System.IO.Directory.Exists("Assets/WaitingQueue/Prefabs"))
+                System.IO.Directory.CreateDirectory("Assets/WaitingQueue/Prefabs");
                 
-                // Udonコンポーネントを追加して参照を自動設定
-                SetupQueueSystem(sceneInstance);
-                
-                Selection.activeGameObject = sceneInstance;
-                Debug.Log("[QueueSystemBuilder] UI prefab created and placed in scene at: " + prefabPath);
-            }
-            else
-            {
-                Debug.LogWarning("[QueueSystemBuilder] Could not instantiate prefab in scene.");
-            }
+            PrefabUtility.SaveAsPrefabAsset(root, path);
+            Object.DestroyImmediate(root);
+
+            // シーンに配置
+            GameObject instance = PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(path)) as GameObject;
             
-            Object.DestroyImmediate(rootObject);
-            return prefabPath;
+            if (instance != null)
+            {
+                instance.name = "QueueSystem";
+                // セットアップ実行
+                SetupQueueSystem(instance);
+                
+                Selection.activeGameObject = instance;
+                Debug.Log("[QueueSystemBuilder] 完了: " + path);
+            }
+            return path;
         }
         
-        /// <summary>
-        /// QueueSystemにUdonコンポーネントを追加し、参照を自動設定します。
-        /// </summary>
         private static void SetupQueueSystem(GameObject queueSystem)
         {
-            // 各オブジェクトを取得
-            QueueManager queueManager = queueSystem.AddComponent<QueueManager>();
-            
+            Debug.Log("[QueueSystemBuilder] セットアップを開始します...");
+
+            // 1. 各パネルの取得
             Transform worldPanelObj = queueSystem.transform.Find("WorldFixedPanel");
-            QueueUIManager uiManager = worldPanelObj != null ? worldPanelObj.gameObject.AddComponent<QueueUIManager>() : null;
+            Transform notifPanelObj = queueSystem.transform.Find("PlayerFollowNotification");
+
+            // 2. コンポーネントの追加 (公式メソッド使用)
+            QueueManager qm = AddUdonComponent<QueueManager>(queueSystem);
             
-            Transform notificationPanelObj = queueSystem.transform.Find("PlayerFollowNotification");
-            QueueNotificationManager notificationManager = notificationPanelObj != null ? notificationPanelObj.gameObject.AddComponent<QueueNotificationManager>() : null;
+            QueueUIManager ui = null;
+            if (worldPanelObj) ui = AddUdonComponent<QueueUIManager>(worldPanelObj.gameObject);
             
-            // QueueUIManagerの参照を設定
-            if (uiManager != null && worldPanelObj != null)
+            QueueNotificationManager notif = null;
+            if (notifPanelObj) notif = AddUdonComponent<QueueNotificationManager>(notifPanelObj.gameObject);
+
+            // エラーチェック
+            if (qm == null) { Debug.LogError("[QueueSystemBuilder] QueueManagerの追加に失敗！スクリプトのエラーを確認してください。"); return; }
+            if (ui == null) { Debug.LogError("[QueueSystemBuilder] QueueUIManagerの追加に失敗！"); }
+            if (notif == null) { Debug.LogError("[QueueSystemBuilder] QueueNotificationManagerの追加に失敗！"); }
+
+            Debug.Log("[QueueSystemBuilder] コンポーネントの追加が完了しました");
+
+            // 3. UI Managerの設定
+            if (ui != null && worldPanelObj != null)
             {
-                uiManager.worldQueueListText = worldPanelObj.Find("ScrollView/Viewport/Content/QueueListText")?.GetComponent<TextMeshProUGUI>();
-                uiManager.worldScrollRect = worldPanelObj.Find("ScrollView")?.GetComponent<ScrollRect>();
-                uiManager.worldToggleButton = worldPanelObj.Find("WorldToggleButton")?.GetComponent<Button>();
-                uiManager.worldButtonText = worldPanelObj.Find("WorldToggleButton/ButtonText")?.GetComponent<TextMeshProUGUI>();
+                ui.worldQueueListText = worldPanelObj.Find("ScrollView/Viewport/Content/QueueListText")?.GetComponent<TextMeshProUGUI>();
+                ui.worldScrollRect = worldPanelObj.Find("ScrollView")?.GetComponent<ScrollRect>();
+                ui.worldToggleButton = worldPanelObj.Find("WorldToggleButton")?.GetComponent<Button>();
+                ui.worldButtonText = worldPanelObj.Find("WorldToggleButton/ButtonText")?.GetComponent<TextMeshProUGUI>();
+
+                // ボタン自動設定
+                if (ui.worldToggleButton != null)
+                {
+                    UdonBehaviour qmBacking = UdonSharpEditorUtility.GetBackingUdonBehaviour(qm);
+                    if (qmBacking != null)
+                    {
+                        Button btn = ui.worldToggleButton;
+                        UnityEditor.Events.UnityEventTools.AddStringPersistentListener(
+                            btn.onClick, 
+                            qmBacking.SendCustomEvent, 
+                            "OnToggleButtonClick"
+                        );
+                        Debug.Log("[QueueSystemBuilder] ボタンイベントを設定しました");
+                    }
+                }
                 
-                // 注: ボタンリスナーは手動で設定してください
-                // WorldToggleButton のInspectorで Button > OnClick() を開き
-                // 「Runtime Only」に設定した後、QueueSystem を Object にドラッグ
-                // UdonBehaviour.SendCustomEvent (string)を選択し、OnToggleButtonClickと入力
+                UdonSharpEditorUtility.CopyProxyToUdon(ui);
+                Debug.Log("[QueueSystemBuilder] QueueUIManager の設定完了");
+            }
+
+            // 4. Notification Managerの設定
+            if (notif != null && notifPanelObj != null)
+            {
+                notif.notificationPanel = notifPanelObj.Find("NotificationPanel")?.gameObject;
+                notif.notificationText = notifPanelObj.Find("NotificationPanel/NotificationText")?.GetComponent<TextMeshProUGUI>();
+                notif.notificationBackground = notifPanelObj.Find("NotificationPanel")?.GetComponent<Image>();
+                notif.notificationAudioSource = queueSystem.transform.Find("NotificationAudio")?.GetComponent<AudioSource>();
                 
-                Debug.Log("[QueueSystemBuilder] QueueUIManager references set");
+                UdonSharpEditorUtility.CopyProxyToUdon(notif);
+                Debug.Log("[QueueSystemBuilder] QueueNotificationManager の設定完了");
+            }
+
+            // 5. QueueManagerの設定
+            if (qm != null)
+            {
+                qm.uiManager = ui;
+                qm.notificationManager = notif;
+
+                UdonSharpEditorUtility.CopyProxyToUdon(qm);
+                Debug.Log("[QueueSystemBuilder] QueueManager の設定完了");
             }
             
-            // QueueNotificationManagerの参照を設定
-            if (notificationManager != null && notificationPanelObj != null)
-            {
-                notificationManager.notificationPanel = notificationPanelObj.gameObject;
-                notificationManager.notificationText = notificationPanelObj.Find("NotificationPanel/NotificationText")?.GetComponent<TextMeshProUGUI>();
-                notificationManager.notificationBackground = notificationPanelObj.Find("NotificationPanel")?.GetComponent<Image>();
-                notificationManager.notificationAudioSource = queueSystem.transform.Find("NotificationAudio")?.GetComponent<AudioSource>();
-                Debug.Log("[QueueSystemBuilder] QueueNotificationManager references set");
-            }
-            
-            // QueueManagerの参照を設定
-            queueManager.uiManager = uiManager;
-            queueManager.notificationManager = notificationManager;
-            Debug.Log("[QueueSystemBuilder] QueueManager references set");
+            Debug.Log("[QueueSystemBuilder] 全セットアップが正常に完了しました！");
         }
     }
 }
