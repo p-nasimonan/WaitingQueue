@@ -282,69 +282,115 @@ namespace Youkan.WaitingQueue.Editor
         
         /// <summary>
         /// プレイヤー追従型通知パネル（VR用）
-        /// QueueNotificationManagerがこのパネルにアタッチされます。
+        /// スマートウォッチ風のデザインとサイズに調整済み
         /// </summary>
         private GameObject CreatePlayerFollowNotificationPanel(Transform parent)
         {
             GameObject canvasObject = new GameObject("PlayerFollowNotification");
             canvasObject.transform.SetParent(parent);
-            canvasObject.transform.localPosition = new Vector3(0, 0.7f, 1.5f);
+            // 初期位置は仮置き（実行時にスクリプトで左手に飛びます）
+            canvasObject.transform.localPosition = Vector3.zero;
             
             // Canvas設定 (World Space)
             Canvas canvas = canvasObject.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
             
             CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
-            scaler.dynamicPixelsPerUnit = 10;
+            scaler.dynamicPixelsPerUnit = 50; // 小さい文字もくっきりさせるため高めに
             
-            // VRC UI Shape 設定
-            canvasObject.AddComponent<VRC.SDK3.Components.VRCUiShape>();
+
+            // canvasObject.AddComponent<VRC.SDK3.Components.VRCUiShape>(); 
+            // 念のため、Collider がついていたら削除する
+            Collider col = canvasObject.GetComponent<Collider>();
+            if (col != null) Object.DestroyImmediate(col);
+            // ▲▲▲ 修正ここまで ▲▲▲
             
-            // レイヤーを Default に設定
             canvasObject.layer = LayerMask.NameToLayer("Default");
             
             RectTransform canvasRect = canvasObject.GetComponent<RectTransform>();
-            canvasRect.sizeDelta = new Vector2(500, 200);
-            canvasRect.localScale = new Vector3(0.003f, 0.003f, 0.003f);
             
-            // 背景パネル
-            GameObject panelObject = new GameObject("NotificationPanel");
-            panelObject.transform.SetParent(canvasObject.transform, false);
-            Image panelImage = panelObject.AddComponent<Image>();
-            panelImage.color = new Color(1f, 0.8f, 0f, 0.9f);
-            RectTransform panelRect = panelObject.GetComponent<RectTransform>();
+            // ▼▼▼ スマートウォッチサイズに変更 ▼▼▼
+            // キャンバス解像度
+            canvasRect.sizeDelta = new Vector2(200, 75);
+            // スケール: 0.0005 (実寸 幅15cm くらい)
+            canvasRect.localScale = new Vector3(0.0005f, 0.0005f, 0.0005f);
+            // ▲▲▲ 修正ここまで ▲▲▲
+
+            
+            // 1. 常時表示パネル（時計の文字盤部分）
+            GameObject infoPanel = new GameObject("WristInfoPanel");
+            infoPanel.transform.SetParent(canvasObject.transform, false);
+            Image infoPanelImage = infoPanel.AddComponent<Image>();
+            infoPanelImage.color = new Color(0.05f, 0.05f, 0.08f, 0.95f); // ほぼ黒
+            
+            RectTransform infoPanelRect = infoPanel.GetComponent<RectTransform>();
+            infoPanelRect.anchorMin = Vector2.zero;
+            infoPanelRect.anchorMax = Vector2.one;
+            infoPanelRect.sizeDelta = Vector2.zero;
+
+            // 自分の順番テキスト
+            GameObject positionTextObj = new GameObject("WristPositionText");
+            positionTextObj.transform.SetParent(infoPanel.transform, false);
+            TextMeshProUGUI positionText = positionTextObj.AddComponent<TextMeshProUGUI>();
+            if (_japaneseFontAsset != null) positionText.font = _japaneseFontAsset;
+            
+            positionText.text = "待機: -";
+            positionText.fontSize = 13;
+            positionText.alignment = TextAlignmentOptions.Center;
+            positionText.color = new Color(0.7f, 0.7f, 0.7f);
+            
+            RectTransform positionTextRect = positionTextObj.GetComponent<RectTransform>();
+            positionTextRect.anchorMin = new Vector2(0, 0.5f);
+            positionTextRect.anchorMax = new Vector2(1, 0.9f);
+            positionTextRect.sizeDelta = Vector2.zero;
+            
+            // 現在呼ばれている人のテキスト
+            GameObject calledTextObj = new GameObject("WristCalledPlayerText");
+            calledTextObj.transform.SetParent(infoPanel.transform, false);
+            TextMeshProUGUI calledText = calledTextObj.AddComponent<TextMeshProUGUI>();
+            if (_japaneseFontAsset != null) calledText.font = _japaneseFontAsset;
+            
+            calledText.text = "呼出: -";
+            calledText.fontSize = 14;
+            calledText.fontStyle = FontStyles.Bold;
+            calledText.alignment = TextAlignmentOptions.Center;
+            calledText.color = Color.white;
+            
+            RectTransform calledTextRect = calledTextObj.GetComponent<RectTransform>();
+            calledTextRect.anchorMin = new Vector2(0, 0.1f);
+            calledTextRect.anchorMax = new Vector2(1, 0.6f);
+            calledTextRect.sizeDelta = Vector2.zero;
+            
+
+            // 2. 通知パネル（オーバーレイで全面に被せる）
+            GameObject notificationPanel = new GameObject("NotificationPanel");
+            notificationPanel.transform.SetParent(canvasObject.transform, false);
+            Image panelImage = notificationPanel.AddComponent<Image>();
+            panelImage.color = new Color(1f, 0.8f, 0f, 1f); // 黄色、不透明
+            
+            RectTransform panelRect = notificationPanel.GetComponent<RectTransform>();
             panelRect.anchorMin = Vector2.zero;
             panelRect.anchorMax = Vector2.one;
             panelRect.sizeDelta = Vector2.zero;
             
             // 通知テキスト
             GameObject textObject = new GameObject("NotificationText");
-            textObject.transform.SetParent(panelObject.transform, false);
+            textObject.transform.SetParent(notificationPanel.transform, false);
             TextMeshProUGUI notificationText = textObject.AddComponent<TextMeshProUGUI>();
+            if (_useJapanese && _japaneseFontAsset != null) notificationText.font = _japaneseFontAsset;
             
-            // 日本語フォントを検索
-            TMP_FontAsset japaneseFont = FindJapaneseFontAsset();
-            if (_useJapanese && japaneseFont != null)
-            {
-                notificationText.font = japaneseFont;
-                notificationText.text = "あなたの番です！";
-            }
-            else
-            {
-                notificationText.text = _useJapanese ? "あなたの番です！" : "It's your turn!";
-            }
-            
-            notificationText.fontSize = 48;
+            notificationText.text = "あなたの番です！";
+            notificationText.fontSize = 50;
             notificationText.fontStyle = FontStyles.Bold;
             notificationText.alignment = TextAlignmentOptions.Center;
             notificationText.color = Color.black;
+            
             RectTransform textRect = textObject.GetComponent<RectTransform>();
             textRect.anchorMin = Vector2.zero;
             textRect.anchorMax = Vector2.one;
-            textRect.sizeDelta = new Vector2(-20, -20);
+            textRect.sizeDelta = new Vector2(-10, -10);
             
-            // 初期状態で非表示
-            canvasObject.SetActive(false);
+            notificationPanel.SetActive(false);
             
             return canvasObject;
         }
@@ -736,6 +782,13 @@ namespace Youkan.WaitingQueue.Editor
                     ui.ownerAdvanceButton = ownerPanelObj.Find("OwnerAdvanceButton")?.GetComponent<Button>();
                     ui.ownerAdvanceButtonText = ownerPanelObj.Find("OwnerAdvanceButton/AdvanceButtonText")?.GetComponent<TextMeshProUGUI>();
                     ui.ownerRestoreButton = ownerPanelObj.Find("OwnerRestoreButton")?.GetComponent<Button>();  // ★新規
+                }
+
+                // --- プレイヤー腕表示 ---
+                if (notifPanelObj != null)
+                {
+                    ui.wristPositionText = notifPanelObj.Find("WristInfoPanel/WristPositionText")?.GetComponent<TextMeshProUGUI>();
+                    ui.wristCalledPlayerText = notifPanelObj.Find("WristInfoPanel/WristCalledPlayerText")?.GetComponent<TextMeshProUGUI>();
                 }
 
                 UdonSharpEditorUtility.CopyProxyToUdon(ui);

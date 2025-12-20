@@ -1,189 +1,127 @@
 using UdonSharp;
 using UnityEngine;
 using VRC.SDKBase;
-using VRC.Udon;
 using UnityEngine.UI;
 using TMPro;
 
 namespace Youkan.WaitingQueue
 {
-    /// <summary>
-    /// キューの通知を管理します。
-    /// プレイヤーの番号が来たときに通知表示と効果音を生成します。
-    /// </summary>
     [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
     public class QueueNotificationManager : UdonSharpBehaviour
     {
-        [Header("Notification UI (Player Follow)")]
+        [Header("UI References")]
         public GameObject notificationPanel;
         public TextMeshProUGUI notificationText;
         public Image notificationBackground;
-
-        [Header("Audio")]
         public AudioSource notificationAudioSource;
-        [SerializeField] private AudioClip notificationSound;
 
-        [Header("Notification Settings")]
-        [SerializeField] private float displayDuration = 5f; // 通知表示時間
-        [SerializeField] private string notificationMessage = "あなたの番です！";
-        [SerializeField] private Color notificationColor = new Color(1f, 0.8f, 0f, 0.9f);
+        [Header("Settings")]
+        [SerializeField] private float notificationDuration = 5.0f;
 
-        [Header("Animation Settings")]
-        [SerializeField] private bool enablePulseAnimation = true;
-        [SerializeField] private float pulseSpeed = 2f;
-        [SerializeField] private float pulseScale = 1.1f;
+        // ▼▼▼ 調整ポイント ▼▼▼
+        
+        // 基準位置からのずれ（メートル単位）
+        // X: 指先方向 (+), 肘方向 (-)
+        // Y: 親指方向 (+), 小指方向 (-)
+        // Z: 手の甲側 (+), 手のひら側 (-)
+        // ※「後ろに行く」場合は Z を大きく(プラスに) してみてください
+        [SerializeField] private Vector3 wristOffset = new Vector3(0.1f, 0f, 0.08f);
+        
+        // 回転調整
+        // 手の甲に乗せて、文字盤を顔に向ける角度
+        [SerializeField] private Vector3 wristRotationOffset = new Vector3(70f, 0f, 0f);
+
+        // 基準となるアバターの身長（メートル）
+        [SerializeField] private float referenceHeight = 1.6f;
+
+        // ▲▲▲ 調整ここまで ▲▲▲
 
         private VRCPlayerApi localPlayer;
-        private Vector3 originalScale;
-        private bool isDisplaying = false; // 表示状態フラグ
-        private float disableTime = 0f; // 非表示になる時刻
+        private bool isNotificationActive = false;
+        private float notificationTimer = 0f;
+        private Vector3 initialScale; // 元のサイズを記憶しておく変数
 
         private void Start()
         {
             localPlayer = Networking.LocalPlayer;
+            if (notificationPanel != null) notificationPanel.SetActive(false);
             
-            if (localPlayer == null)
-            {
-                Debug.LogError("[QueueNotificationManager] Local player is null!");
-                enabled = false;
-                return;
-            }
+            // 最初に設定されたスケール（0.0005など）を記憶
+            initialScale = transform.localScale;
+        }
+
+        public override void PostLateUpdate()
+        {
+            if (localPlayer == null) return;
+            if (!localPlayer.IsValid()) return;
+
+            // 左手の位置と回転を取得
+            VRCPlayerApi.TrackingData handData = localPlayer.GetTrackingData(VRCPlayerApi.TrackingDataType.LeftHand);
             
-            if (notificationPanel != null)
-            {
-                originalScale = notificationPanel.transform.localScale;
-                notificationPanel.SetActive(false);
-            }
-            else
-            {
-                Debug.LogWarning("[QueueNotificationManager] Notification panel is not assigned!");
-                originalScale = Vector3.one;
-            }
+            if (handData.position == Vector3.zero) return;
 
-            if (notificationText != null)
-            {
-                notificationText.text = notificationMessage;
-            }
+            // --- 身長スケーリング計算 ---
+            // 現在の身長を取得
+            float currentHeight = localPlayer.GetAvatarEyeHeightAsMeters();
+            // 基準(1.6m)に対して何倍か？（例: 身長0.8mなら 0.5倍）
+            float scaleFactor = currentHeight / referenceHeight;
+            
+            // 安全策：極端に小さい/大きい値を防ぐ
+            if (scaleFactor < 0.1f) scaleFactor = 0.1f;
+            if (scaleFactor > 10f) scaleFactor = 10f;
 
-            if (notificationBackground != null)
+            // 1. サイズを身長に合わせて変更
+            transform.localScale = initialScale * scaleFactor;
+
+            // 2. 位置（オフセット）も身長に合わせて遠く/近くする
+            // これで巨大アバターでも手が埋まらなくなります
+            Vector3 scaledOffset = wristOffset * scaleFactor;
+
+            // 位置と回転を適用
+            transform.position = handData.position + (handData.rotation * scaledOffset);
+            transform.rotation = handData.rotation * Quaternion.Euler(wristRotationOffset);
+        }
+
+        public void TriggerNotification(string calledPlayerIdStr)
+        {
+            if (localPlayer == null) return;
+            if (calledPlayerIdStr == localPlayer.playerId.ToString())
             {
-                notificationBackground.color = notificationColor;
+                ShowNotification("あなたの番です！", Color.yellow);
+                PlaySound();
             }
+        }
+
+        public void ShowNotification(string message, Color bgColor)
+        {
+            if (notificationPanel == null) return;
+            if (notificationText != null) notificationText.text = message;
+            if (notificationBackground != null) notificationBackground.color = bgColor;
+
+            notificationPanel.SetActive(true);
+            isNotificationActive = true;
+            notificationTimer = notificationDuration;
         }
 
         private void Update()
         {
-            if (isDisplaying && notificationPanel != null)
+            if (isNotificationActive)
             {
-                if (enablePulseAnimation)
+                notificationTimer -= Time.deltaTime;
+                if (notificationTimer <= 0)
                 {
-                    float scale = 1f + Mathf.Sin(Time.time * pulseSpeed) * (pulseScale - 1f);
-                    notificationPanel.transform.localScale = originalScale * scale;
-                }
-
-                // displayDuration に達したら自動で非表示
-                if (Time.time >= disableTime)
-                {
-                    HideNotification();
+                    if (notificationPanel != null) notificationPanel.SetActive(false);
+                    isNotificationActive = false;
                 }
             }
         }
 
-        /// <summary>
-        /// 通知をトリガーします。全員に表示し、本人と他人でメッセージを変えます。
-        /// </summary>
-        public void TriggerNotification(string targetPlayerIdStr)
+        private void PlaySound()
         {
-            // ターゲット（呼ばれた人）の情報を取得
-            if (!int.TryParse(targetPlayerIdStr, out int targetId)) return;
-            VRCPlayerApi targetPlayer = VRCPlayerApi.GetPlayerById(targetId);
-            string targetName = (targetPlayer != null) ? targetPlayer.displayName : "退出したプレイヤー";
-
-            // ローカルプレイヤー（自分自身）のチェック
-            if (localPlayer == null) return;
-
-            // ▼▼▼ 修正ポイント ▼▼▼
-            
-            // 1. 全員共通で「表示ON」にする
-            if (notificationPanel != null) notificationPanel.SetActive(true);
-            if (notificationAudioSource != null) notificationAudioSource.Play();
-            
-            isDisplaying = true;
-            disableTime = Time.time + displayDuration;
-
-            // 2. 「本人」と「周りの人」でメッセージを変える
-            if (notificationText != null)
+            if (notificationAudioSource != null)
             {
-                if (localPlayer.playerId == targetId)
-                {
-                    // ★ 本人の場合
-                    notificationText.text = "あなたの番です！\n<size=80%>受付へお越しください</size>";
-                    notificationText.color = new Color(1f, 0.9f, 0.2f); // 黄色っぽく目立たせる
-                }
-                else
-                {
-                    // ★ 他人の場合（周りの人への案内）
-                    notificationText.text = $"次は\n{targetName} さん\nの番です";
-                    notificationText.color = Color.white; // 普通の色
-                }
+                notificationAudioSource.PlayOneShot(notificationAudioSource.clip);
             }
-            // ▲▲▲ 修正ここまで ▲▲▲
-        }
-
-        /// <summary>
-        /// 通知パネルを表示します。
-        /// </summary>
-        private void ShowNotification()
-        {
-            if (notificationPanel != null)
-            {
-                notificationPanel.SetActive(true);
-                notificationPanel.transform.localScale = originalScale;
-            }
-
-            isDisplaying = true;
-            disableTime = Time.time + displayDuration;
-
-            if (localPlayer != null)
-            {
-                Debug.Log($"[QueueNotificationManager] Notification shown for {localPlayer.displayName}");
-            }
-        }
-
-        /// <summary>
-        /// 通知パネルを非表示にします。
-        /// </summary>
-        private void HideNotification()
-        {
-            if (notificationPanel != null)
-            {
-                notificationPanel.SetActive(false);
-                notificationPanel.transform.localScale = originalScale;
-            }
-
-            isDisplaying = false;
-
-            Debug.Log("[QueueNotificationManager] Notification hidden");
-        }
-
-        /// <summary>
-        /// 通知効果音を生成します。
-        /// </summary>
-        private void PlayNotificationSound()
-        {
-            if (notificationAudioSource != null && notificationSound != null)
-            {
-                notificationAudioSource.PlayOneShot(notificationSound);
-                Debug.Log("[QueueNotificationManager] Notification sound played");
-            }
-        }
-
-        /// <summary>
-        /// 手動で通知を閉じる場合に使用します。
-        /// </summary>
-        public void CloseNotification()
-        {
-            HideNotification();
         }
     }
 }

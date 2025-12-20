@@ -27,6 +27,10 @@ namespace Youkan.WaitingQueue
         public TextMeshProUGUI ownerCurrentCalledText;
         public TextMeshProUGUI ownerQueueCountText;
 
+        [Header("Player Wrist Display")]
+        public TextMeshProUGUI wristPositionText;
+        public TextMeshProUGUI wristCalledPlayerText;
+
         [Header("Display Settings")]
         [SerializeField] private int maxDisplayLines = 20;
 
@@ -62,6 +66,8 @@ namespace Youkan.WaitingQueue
             Debug.Log($"[QueueUIManager] UpdateQueueDisplay: lastCalledPlayerId='{lastCalledPlayerId}', playerIds.Length={(playerIds != null ? playerIds.Length : 0)}");
             
             UpdateOwnerDisplay(playerNames, playerIds, lastCalledPlayerId);
+            
+            UpdateWristDisplay(playerNames, playerIds, localPlayerId, lastCalledPlayerId);
         }
 
         /// <summary>
@@ -215,6 +221,51 @@ namespace Youkan.WaitingQueue
             else
             {
                 Debug.LogError("[QueueUIManager] ownerCurrentCalledText is NULL!");
+            }
+        }
+
+        /// <summary>
+        /// 腕表示を更新します。
+        /// </summary>
+        private void UpdateWristDisplay(string[] playerNames, int[] playerIds, int localPlayerId, int lastCalledPlayerId)
+        {
+            // 自分の順番を表示（スマートウォッチ風に簡潔に）
+            if (wristPositionText != null)
+            {
+                int myIndex = -1;
+                if (playerIds != null)
+                {
+                    for (int i = 0; i < playerIds.Length; i++)
+                    {
+                        if (playerIds[i] == localPlayerId)
+                        {
+                            myIndex = i;
+                            break;
+                        }
+                    }
+                }
+
+                if (myIndex >= 0)
+                {
+                    wristPositionText.text = $"待機: {myIndex + 1}番";
+                }
+                else
+                {
+                    wristPositionText.text = "待機: -";
+                }
+            }
+
+            // 現在呼ばれている人を表示（スマートウォッチ風に簡潔に）
+            if (wristCalledPlayerText != null)
+            {
+                if (playerNames != null && playerNames.Length > 0)
+                {
+                    wristCalledPlayerText.text = $"呼出: {playerNames[0]}";
+                }
+                else
+                {
+                    wristCalledPlayerText.text = "呼出: -";
+                }
             }
         }
 
