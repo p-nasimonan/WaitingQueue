@@ -305,7 +305,7 @@ namespace Youkan.WaitingQueue.Editor
             if (col != null) Object.DestroyImmediate(col);
             // ▲▲▲ 修正ここまで ▲▲▲
             
-            canvasObject.layer = LayerMask.NameToLayer("Default");
+            canvasObject.layer = LayerMask.NameToLayer("UI");
             
             RectTransform canvasRect = canvasObject.GetComponent<RectTransform>();
             
@@ -321,7 +321,7 @@ namespace Youkan.WaitingQueue.Editor
             GameObject infoPanel = new GameObject("WristInfoPanel");
             infoPanel.transform.SetParent(canvasObject.transform, false);
             Image infoPanelImage = infoPanel.AddComponent<Image>();
-            infoPanelImage.color = new Color(0.05f, 0.05f, 0.08f, 0.95f); // ほぼ黒
+            infoPanelImage.color = new Color(0.05f, 0.05f, 0.08f, 0.45f); // ほぼ黒
             
             RectTransform infoPanelRect = infoPanel.GetComponent<RectTransform>();
             infoPanelRect.anchorMin = Vector2.zero;

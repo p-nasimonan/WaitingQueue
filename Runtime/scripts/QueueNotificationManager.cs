@@ -21,11 +21,10 @@ namespace Youkan.WaitingQueue
         // ▼▼▼ 調整ポイント ▼▼▼
         
         // 基準位置からのずれ（メートル単位）
-        // X: 指先方向 (+), 肘方向 (-)
-        // Y: 親指方向 (+), 小指方向 (-)
-        // Z: 手の甲側 (+), 手のひら側 (-)
-        // ※「後ろに行く」場合は Z を大きく(プラスに) してみてください
-        [SerializeField] private Vector3 wristOffset = new Vector3(0.1f, 0f, 0.08f);
+        // X:トリガー側(+)
+        // Y: グリップ側(+)
+        // Z: 上(+)
+        [SerializeField] private Vector3 wristOffset = new Vector3(0.08f, -0.03f, -0.05f);
         
         // 回転調整
         // 手の甲に乗せて、文字盤を顔に向ける角度
