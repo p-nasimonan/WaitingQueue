@@ -6,10 +6,6 @@ using UnityEngine.UI;
 
 namespace Youkan.WaitingQueue
 {
-    /// <summary>
-    /// キューに登録するシステムのコアロジックを担当します。
-    /// プレイヤーのエントリー、リスト同期、通知イベント管理を行います。
-    /// </summary>
     [UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
     public class QueueManager : UdonSharpBehaviour
     {
@@ -20,7 +16,6 @@ namespace Youkan.WaitingQueue
         public QueueUIManager uiManager;
         public QueueNotificationManager notificationManager;
         public Button advanceButton;
-        public Image advanceButtonImage;
         public Button restoreButton;
 
         [Header("Synchronized Data")]
@@ -28,367 +23,235 @@ namespace Youkan.WaitingQueue
         [UdonSynced] private string[] queuedPlayerNames = new string[0];
         [UdonSynced] private int lastCalledPlayerId = -1;
         [UdonSynced] private int syncCounter = 0;
-
+        
         [Header("Local State")]
         private VRCPlayerApi localPlayer;
         private int lastKnownSyncCounter = -1;
+        
+        // 最後に「削除」された人の履歴
         private int lastRemovedPlayerId = -1;
         private string lastRemovedPlayerName = "";
 
         private void Start()
         {
             localPlayer = Networking.LocalPlayer;
-            
-            if (localPlayer == null)
-            {
-                Debug.LogError("[QueueManager] Local player is null!");
-                enabled = false;
-                return;
-            }
-
             if (Networking.IsOwner(gameObject))
             {
                 queuedPlayerIds = new int[0];
                 queuedPlayerNames = new string[0];
                 lastCalledPlayerId = -1;
-                syncCounter = 0;
             }
-
             UpdateUI();
         }
 
-        public void OnToggleButtonClick()
-        {
-            ToggleQueue();
-        }
+        public void OnToggleButtonClick() => ToggleQueue();
+        public void OnAdvanceButtonClick() => AdvanceQueue();
+        // UI側で RestoreLastRemovedPlayer を呼ぶように配線済み
 
-        public void OnAdvanceButtonClick()
-        {
-            AdvanceQueue();
-        }
+        // --------------------------------------
+        // コアロジック
+        // --------------------------------------
 
-
-
-        /// <summary>
-        /// プレイヤーがキューに入れ抜けるをトグルします。
-        /// </summary>
         public void ToggleQueue()
         {
-            Debug.Log("[QueueManager] ToggleQueue called");
             if (localPlayer == null) return;
-
-            if (!Networking.IsOwner(gameObject))
-            {
-                Networking.SetOwner(localPlayer, gameObject);
-            }
+            if (!Networking.IsOwner(gameObject)) Networking.SetOwner(localPlayer, gameObject);
 
             int existingIndex = GetPlayerQueueIndex(localPlayer.playerId);
             
             if (existingIndex >= 0)
             {
-                Debug.Log("[QueueManager] Player is in queue, leaving");
                 RemoveFromQueueAt(existingIndex);
-                RequestSerialization();
-                UpdateUI();
             }
             else
             {
-                Debug.Log("[QueueManager] Player not in queue, enqueuing");
                 AddToQueue(localPlayer.playerId, localPlayer.displayName);
-                RequestSerialization();
-                UpdateUI();
             }
+            
+            RequestSerialization();
+            UpdateUI();
         }
 
-        /// <summary>
-        /// ゲストがこのメソッドを呼び出すことでキューに登録します。
-        /// </summary>
-        public void EnqueuePlayer()
+        public void EnqueuePlayer() // 外部呼び出し用
         {
-            if (localPlayer == null)
-            {
-                Debug.LogWarning("[QueueManager] Local player is not set.");
-                return;
-            }
-
+            if (localPlayer == null) return;
             int existingIndex = GetPlayerQueueIndex(localPlayer.playerId);
-            if (existingIndex >= 0)
-            {
-                Debug.LogWarning($"[QueueManager] Player {localPlayer.displayName} is already in the queue.");
-                return;
-            }
+            if (existingIndex >= 0 || queuedPlayerIds.Length >= maxQueueSize) return;
 
-            if (queuedPlayerIds.Length >= maxQueueSize)
-            {
-                Debug.LogWarning("[QueueManager] Queue is full.");
-                return;
-            }
-
-            if (!Networking.IsOwner(gameObject))
-            {
-                Networking.SetOwner(localPlayer, gameObject);
-            }
+            if (!Networking.IsOwner(gameObject)) Networking.SetOwner(localPlayer, gameObject);
 
             AddToQueue(localPlayer.playerId, localPlayer.displayName);
             RequestSerialization();
             UpdateUI();
         }
 
-        /// <summary>
-        /// キューにプレイヤーを追加します。
-        /// </summary>
-        private void AddToQueue(int playerId, string playerName)
+        // ★修正ポイント1：呼んだら即座にリストから消す
+        public void AdvanceQueue()
         {
-            if (string.IsNullOrEmpty(playerName))
+            if (!Networking.IsOwner(gameObject)) Networking.SetOwner(localPlayer, gameObject);
+
+            if (queuedPlayerIds.Length == 0)
             {
-                Debug.LogWarning("[QueueManager] Player name is null or empty.");
+                // 列が空なら呼び出し状態もクリアする？（運用によるが今回はクリアしないでおく）
+                // lastCalledPlayerId = -1; 
+                // RequestSerialization();
+                // UpdateUI();
                 return;
             }
 
-            int newLength = queuedPlayerIds.Length + 1;
+            // 1. 次に呼ぶ人を特定
+            int nextPlayerId = queuedPlayerIds[0];
             
+            // 2. 呼び出し状態を更新
+            lastCalledPlayerId = nextPlayerId;
+            syncCounter++;
+
+            // 3. ★重要：リストから即座に削除する
+            // これで「2回押さないと消えない」現象がなくなります
+            // RemoveFromQueueAtメソッド内で lastRemovedPlayerId が更新されるので「戻す」も可能になります
+            RemoveFromQueueAt(0);
+
+            RequestSerialization();
+            UpdateUI();
+        }
+
+        // ★修正ポイント2：最後尾ではなく「先頭」に戻すメソッドを追加
+        public void RestoreLastRemovedPlayer()
+        {
+            if (!Networking.IsOwner(gameObject)) Networking.SetOwner(localPlayer, gameObject);
+
+            if (lastRemovedPlayerId == -1) return;
+            if (queuedPlayerIds.Length >= maxQueueSize) return;
+            
+            // 既に列にいるなら何もしない
+            if (GetPlayerQueueIndex(lastRemovedPlayerId) >= 0) return;
+
+            // ★先頭に割り込み挿入する
+            InsertToQueueFront(lastRemovedPlayerId, lastRemovedPlayerName);
+            
+            // 戻したので履歴をクリア
+            lastRemovedPlayerId = -1;
+            lastRemovedPlayerName = "";
+            
+            RequestSerialization();
+            UpdateUI();
+        }
+
+        // --------------------------------------
+        // 配列操作ヘルパー
+        // --------------------------------------
+
+        private void AddToQueue(int playerId, string playerName)
+        {
+            // 配列を拡張して末尾に追加
+            int newLength = queuedPlayerIds.Length + 1;
             int[] newIds = new int[newLength];
             string[] newNames = new string[newLength];
 
+            // コピー
             for (int i = 0; i < queuedPlayerIds.Length; i++)
             {
                 newIds[i] = queuedPlayerIds[i];
                 newNames[i] = queuedPlayerNames[i];
             }
 
+            // 末尾に追加
             newIds[newLength - 1] = playerId;
             newNames[newLength - 1] = playerName;
 
             queuedPlayerIds = newIds;
             queuedPlayerNames = newNames;
-
-            Debug.Log($"[QueueManager] Player {playerName} (ID: {playerId}) has been added to the queue. Position: {newLength}");
         }
 
-        /// <summary>
-        /// プレイヤーがキュー内のどの位置にあるかを取得します。
-        /// 見つからない場合は -1 を返します。
-        /// </summary>
-        public int GetPlayerQueueIndex(int playerId)
+        // ★新規：先頭に追加する処理
+        private void InsertToQueueFront(int playerId, string playerName)
         {
+            int newLength = queuedPlayerIds.Length + 1;
+            int[] newIds = new int[newLength];
+            string[] newNames = new string[newLength];
+
+            // 先頭にセット
+            newIds[0] = playerId;
+            newNames[0] = playerName;
+
+            // 既存の要素を1つ後ろにずらしてコピー
             for (int i = 0; i < queuedPlayerIds.Length; i++)
             {
-                if (queuedPlayerIds[i] == playerId)
-                {
-                    return i;
-                }
-            }
-            return -1;
-        }
-
-        /// <summary>
-        /// プレイヤーが現在何番目かを確認します。ベース1です。
-        /// 0 を返した場合はプレイヤーがキューに登録されていません。
-        /// </summary>
-        public int GetPlayerQueuePosition()
-        {
-            int index = GetPlayerQueueIndex(localPlayer.playerId);
-            return index >= 0 ? index + 1 : 0;
-        }
-
-        /// <summary>
-        /// 現在のキューに登録されているプレイヤー数を取得します。
-        /// </summary>
-        public int GetQueueLength()
-        {
-            return queuedPlayerIds.Length;
-        }
-
-        /// <summary>
-        /// オーナーが次のプレイヤーに進める処理を実行します。
-        /// </summary>
-        public void AdvanceQueue()
-        {
-            if (!Networking.IsOwner(gameObject))
-            {
-                Networking.SetOwner(localPlayer, gameObject);
+                newIds[i + 1] = queuedPlayerIds[i];
+                newNames[i + 1] = queuedPlayerNames[i];
             }
 
-            if (lastCalledPlayerId != -1)
-            {
-                int lastCalledIndex = GetPlayerQueueIndex(lastCalledPlayerId);
-                if (lastCalledIndex >= 0)
-                {
-                    RemoveFromQueueAt(lastCalledIndex);
-                    Debug.Log($"[QueueManager] Removed previously called player (ID: {lastCalledPlayerId}) from queue");
-                }
-            }
-
-            if (queuedPlayerIds.Length == 0)
-            {
-                lastCalledPlayerId = -1;
-                RequestSerialization();
-                UpdateUI();
-                Debug.LogWarning("[QueueManager] Queue is now empty.");
-                return;
-            }
-
-            lastCalledPlayerId = queuedPlayerIds[0];
-            syncCounter++;
-
-            RequestSerialization();
-            UpdateUI();
+            queuedPlayerIds = newIds;
+            queuedPlayerNames = newNames;
         }
 
-        /// <summary>
-        /// 指定されたインデックスのプレイヤーをキューから削除します。
-        /// </summary>
         private void RemoveFromQueueAt(int index)
         {
-            if (index < 0 || index >= queuedPlayerIds.Length)
-            {
-                Debug.LogWarning($"[QueueManager] Invalid index: {index}");
-                return;
-            }
+            if (index < 0 || index >= queuedPlayerIds.Length) return;
 
+            // ★削除する人を「履歴」に保存（Restore用）
             lastRemovedPlayerId = queuedPlayerIds[index];
             lastRemovedPlayerName = queuedPlayerNames[index];
 
             int newLength = queuedPlayerIds.Length - 1;
+            int[] newIds = new int[newLength];
+            string[] newNames = new string[newLength];
 
-            if (newLength == 0)
+            // 削除箇所を飛ばしてコピー
+            for (int i = 0, j = 0; i < queuedPlayerIds.Length; i++)
             {
-                queuedPlayerIds = new int[0];
-                queuedPlayerNames = new string[0];
-            }
-            else
-            {
-                int[] newIds = new int[newLength];
-                string[] newNames = new string[newLength];
-
-                for (int i = 0; i < index; i++)
-                {
-                    newIds[i] = queuedPlayerIds[i];
-                    newNames[i] = queuedPlayerNames[i];
-                }
-
-                for (int i = index + 1; i < queuedPlayerIds.Length; i++)
-                {
-                    newIds[i - 1] = queuedPlayerIds[i];
-                    newNames[i - 1] = queuedPlayerNames[i];
-                }
-
-                queuedPlayerIds = newIds;
-                queuedPlayerNames = newNames;
+                if (i == index) continue;
+                newIds[j] = queuedPlayerIds[i];
+                newNames[j] = queuedPlayerNames[i];
+                j++;
             }
 
-            Debug.Log($"[QueueManager] Player {lastRemovedPlayerName} (ID: {lastRemovedPlayerId}) has been removed from the queue.");
+            queuedPlayerIds = newIds;
+            queuedPlayerNames = newNames;
         }
 
-        /// <summary>
-        /// プレイヤーがキューから手動で脱出します。
-        /// </summary>
-        public void LeaveQueue()
+        public int GetPlayerQueueIndex(int playerId)
         {
-            if (localPlayer == null) return;
-
-            int index = GetPlayerQueueIndex(localPlayer.playerId);
-            if (index >= 0)
+            for (int i = 0; i < queuedPlayerIds.Length; i++)
             {
-                if (!Networking.IsOwner(gameObject))
-                {
-                    Networking.SetOwner(localPlayer, gameObject);
-                }
-
-                RemoveFromQueueAt(index);
-                RequestSerialization();
-                UpdateUI();
-                Debug.Log($"[QueueManager] Player {localPlayer.displayName} has left the queue.");
+                if (queuedPlayerIds[i] == playerId) return i;
             }
+            return -1;
         }
 
-        /// <summary>
-        /// UdonEventを通じてデータ受信時の処理。
-        /// </summary>
+        // --------------------------------------
+        // UI & Event
+        // --------------------------------------
+
         public override void OnDeserialization()
         {
-            Debug.Log("[QueueManager] Queue data has been synchronized.");
-            
             if (syncCounter != lastKnownSyncCounter && lastCalledPlayerId != -1)
             {
                 lastKnownSyncCounter = syncCounter;
-                
                 if (notificationManager != null)
                 {
                     notificationManager.TriggerNotification(lastCalledPlayerId.ToString());
                 }
             }
-            
             UpdateUI();
         }
 
-        /// <summary>
-        /// UIマネージャーにデータを送信して更新します。
-        /// </summary>
         private void UpdateUI()
         {
-            if (localPlayer == null)
-            {
-                Debug.LogWarning("[QueueManager] Cannot update UI, local player is null.");
-                return;
-            }
-
-            if (uiManager != null)
+            if (uiManager != null && localPlayer != null)
             {
                 bool isInQueue = IsPlayerInQueue();
                 uiManager.UpdateQueueDisplay(queuedPlayerNames, queuedPlayerIds, localPlayer.playerId, isInQueue, lastCalledPlayerId);
             }
         }
 
-        /// <summary>
-        /// ローカルプレイヤーがキューに入っているかを確認します。
-        /// </summary>
         public bool IsPlayerInQueue()
         {
             if (localPlayer == null) return false;
             return GetPlayerQueueIndex(localPlayer.playerId) >= 0;
         }
-
-        /// <summary>
-        /// 最後に削除したプレイヤーを復元します。
-        /// </summary>
-        public void RestoreLastRemovedPlayer()
-        {
-            if (lastRemovedPlayerId == -1)
-            {
-                Debug.LogWarning("[QueueManager] No player to restore.");
-                return;
-            }
-
-            if (!Networking.IsOwner(gameObject))
-            {
-                Networking.SetOwner(localPlayer, gameObject);
-            }
-
-            if (GetPlayerQueueIndex(lastRemovedPlayerId) >= 0)
-            {
-                Debug.LogWarning("[QueueManager] Removed player is already in queue.");
-                return;
-            }
-
-            if (queuedPlayerIds.Length >= maxQueueSize)
-            {
-                Debug.LogWarning("[QueueManager] Queue is full. Cannot restore.");
-                return;
-            }
-
-            AddToQueue(lastRemovedPlayerId, lastRemovedPlayerName);
-            lastRemovedPlayerId = -1;
-            lastRemovedPlayerName = "";
-            
-            RequestSerialization();
-            UpdateUI();
-            Debug.Log($"[QueueManager] Restored player: {lastRemovedPlayerName}");
-        }
-
-        /// <summary>
-        /// キューデータを取得します（外部参照用）。
-        /// </summary>
+        
+        // 外部参照用
         public string[] GetQueuePlayerNames() => queuedPlayerNames;
         public int[] GetQueuePlayerIds() => queuedPlayerIds;
     }
